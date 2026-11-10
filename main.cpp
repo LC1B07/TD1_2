@@ -1,6 +1,6 @@
 #include <Novice.h>
 
-// "1263_ゲームタイトル" に変更
+// "1263_ゲームタイトル" に変更。
 const char kWindowTitle[] = "1263_ゲームタイトル";
 
 // Windowsアプリでのエントリーポイント(main関数)
