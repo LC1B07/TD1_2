@@ -24,6 +24,7 @@ int WINAPI WinMain(
     // ライブラリの初期化
     Novice::Initialize(kWindowTitle, kWidth, kHeight);
 
+	// ウィンドウハンドルとフルスクリーン切り替え用の変数
     HWND gameWindow = GetActiveWindow();
     RECT windowRect = {};
     LONG_PTR windowStyle = 0;
