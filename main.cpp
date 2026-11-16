@@ -1,4 +1,5 @@
 #include <Novice.h>
+#include <Windows.h>
 #include <cstring>
 #include <cmath>
 
@@ -7,6 +8,7 @@
 #include "boss.h"
 #include "effect.h"
 #include "scene.h"
+#include "fullScreen.h"
 
 const char kWindowTitle[] =
 "LC1D_03_イシダ_ノリヒコ_タイトル";
@@ -21,6 +23,16 @@ int WINAPI WinMain(
 
     // ライブラリの初期化
     Novice::Initialize(kWindowTitle, kWidth, kHeight);
+
+    HWND gameWindow = GetActiveWindow();
+    RECT windowRect = {};
+    LONG_PTR windowStyle = 0;
+    bool isFullScreen = false;
+
+    if (gameWindow == nullptr)
+    {
+        OutputDebugStringA("gameWindow is nullptr\n");
+    }
 
     // キー入力
     char keys[256] = { 0 };
@@ -102,8 +114,18 @@ int WINAPI WinMain(
 
         // キー入力
         memcpy(preKeys, keys, 256);
-
         Novice::GetHitKeyStateAll(keys);
+
+        // F11でフルスクリーン切り替え
+        if (keys[DIK_F11] != 0 && preKeys[DIK_F11] == 0)
+        {
+            ToggleFullScreen(
+                gameWindow,
+                windowRect,
+                windowStyle,
+                isFullScreen
+            );
+        }
 
         bool justWindow = false;
 
