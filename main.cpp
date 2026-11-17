@@ -2,13 +2,13 @@
 #include <Novice.h>
 #include <Windows.h>
 
-#include "game.h"
-#include "player.h"
-#include "boss.h"
-#include "bullet.h"
-#include "effect.h"
-#include "scene.h"
-#include "fullScreen.h"
+#include "Source/Game/game.h"
+#include "Source/Player/player.h"
+#include "Source/Boss/boss.h"
+#include "Source/Bullet/bullet.h"
+#include "Source/Effect/effect.h"
+#include "Source/Scene/scene.h"
+#include "Source/FullScreen/fullScreen.h"
 
 const char kWindowTitle[] = "TD1_2";
 

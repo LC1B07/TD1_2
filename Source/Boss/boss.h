@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "game.h"
+#include "../Game/game.h"
 
 // ボス戦の初期化
 void ResetBossBattle(

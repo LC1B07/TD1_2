@@ -22,28 +22,28 @@
     <ClCompile Include="C:\KamataEngine\Adapter\Novice.cpp">
       <Filter>KamataEngine\Adapter</Filter>
     </ClCompile>
-    <ClCompile Include="bullet.cpp">
+    <ClCompile Include="Source\Bullet\bullet.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="effect.cpp">
+    <ClCompile Include="Source\Effect\effect.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="fullScreen.cpp">
+    <ClCompile Include="Source\FullScreen\fullScreen.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="game.cpp">
+    <ClCompile Include="Source\Game\game.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="player.cpp">
+    <ClCompile Include="Source\Player\player.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="scene.cpp">
+    <ClCompile Include="Source\Scene\scene.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="main.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="boss.cpp">
+    <ClCompile Include="Source\Boss\boss.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>
@@ -129,25 +129,25 @@
     <ClInclude Include="C:\KamataEngine\DirectXGame\2d\ImGuiManager.h">
       <Filter>KamataEngine\Include</Filter>
     </ClInclude>
-    <ClInclude Include="boss.h">
+    <ClInclude Include="Source\Boss\boss.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="bullet.h">
+    <ClInclude Include="Source\Bullet\bullet.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="effect.h">
+    <ClInclude Include="Source\Effect\effect.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="fullScreen.h">
+    <ClInclude Include="Source\FullScreen\fullScreen.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="game.h">
+    <ClInclude Include="Source\Game\game.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="player.h">
+    <ClInclude Include="Source\Player\player.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="scene.h">
+    <ClInclude Include="Source\Scene\scene.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>
