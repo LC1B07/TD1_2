@@ -77,6 +77,8 @@ int WINAPI WinMain(
         // 更新処理
         // --------------------------------
 
+        DrawBackground();
+
         switch (currentScene) {
 
         case SCENE_TITLE:
@@ -89,6 +91,8 @@ int WINAPI WinMain(
                 preKeys
             );
 
+            DrawTitleScene(titleSelection);
+
             break;
 
         case SCENE_BOSS:
@@ -100,10 +104,22 @@ int WINAPI WinMain(
                 preKeys
             );
 
+            DrawBossScene(state);
+
             break;
 
         case SCENE_GAMEOVER:
+
+            DrawGameOverScene();
+
+            break;
+
         case SCENE_CLEAR:
+
+            DrawClearScene();
+
+            break;
+
         case SCENE_CREDITS:
 
             UpdateOtherScene(
@@ -112,6 +128,8 @@ int WINAPI WinMain(
                 keys,
                 preKeys
             );
+
+            DrawCreditsScene();
 
             break;
 
@@ -145,48 +163,6 @@ int WINAPI WinMain(
 
             state.shakeY =
                 (int)(cosf(step * 3.1f + 0.4f) * power);
-        }
-
-        // --------------------------------
-        // 描画処理
-        // --------------------------------
-
-        DrawBackground();
-
-        switch (currentScene) {
-
-        case SCENE_TITLE:
-
-            DrawTitleScene(titleSelection);
-
-            break;
-
-        case SCENE_BOSS:
-
-            DrawBossScene(state);
-
-            break;
-
-        case SCENE_GAMEOVER:
-
-            DrawGameOverScene();
-
-            break;
-
-        case SCENE_CLEAR:
-
-            DrawClearScene();
-
-            break;
-
-        case SCENE_CREDITS:
-
-            DrawCreditsScene();
-
-            break;
-
-        default:
-            break;
         }
 
         Novice::EndFrame();
