@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "game.h"
+#include "../Game/game.h"
 
 // タイトル更新
 void UpdateTitleScene(

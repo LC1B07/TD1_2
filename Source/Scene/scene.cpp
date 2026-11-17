@@ -1,10 +1,10 @@
 
-#include "scene.h"
+#include "../Scene/scene.h"
 
-#include "player.h"
-#include "boss.h"
-#include "bullet.h"
-#include "effect.h"
+#include "../Player/player.h"
+#include "../Boss/boss.h"
+#include "../Bullet/bullet.h"
+#include "../Effect/effect.h"
 
 // メニューボタン描画
 void DrawMenuButton(
