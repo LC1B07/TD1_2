@@ -1,5 +1,5 @@
 
-#include "Source/Player/player.h"
+#include "../Player/player.h"
 
 // プレイヤー更新
 void UpdatePlayer(
