@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "../Game/game.h"
+#include "Source/Game/game.h"
 
 // プレイヤー更新
 void UpdatePlayer(
