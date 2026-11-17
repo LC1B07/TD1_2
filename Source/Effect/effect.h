@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include "game.h"
+#include "../Game/game.h"
 
 // 演出タイマー更新
 void UpdateEffectTimers(GameState& state);
