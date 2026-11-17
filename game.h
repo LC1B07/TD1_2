@@ -112,11 +112,76 @@ struct Bullet {
 // 弾の最大数
 const int kMaxBullets = 20;
 
-// カウンターエフェクト
+// カウンター演出
 struct CounterEffect {
-    float x, y;
+    float x;
+    float y;
     int timer;
     bool enhanced;
+};
+
+// ゲーム全体の状態
+struct GameState {
+
+    Player player;
+    Boss boss;
+    Bullet bullets[kMaxBullets];
+
+    CounterEffect counterEffect;
+
+    int counterCooldown = 0;
+    int bossFlash = 0;
+
+    int hitStopTimer = 0;
+    int slowTimer = 0;
+
+    float gameFrameAccumulator = 0.0f;
+
+    int shakeTimer = 0;
+    int shakeTotalFrames = kCounterShakeFrames;
+    float shakeMaxPower = kCounterShakePower;
+
+    int specialFlashTimer = 0;
+    int specialImpactTimer = 0;
+
+    float specialImpactX = 0.0f;
+    float specialImpactY = 0.0f;
+
+    int shakeX = 0;
+    int shakeY = 0;
+
+    // ダッシュ
+    bool dashRequest = false;
+
+    int dashTimer = 0;
+    int dashCooldown = 0;
+
+    float dashDirX = 0.0f;
+    float dashDirY = 0.0f;
+
+    DashWave dashWave;
+    DashAfterimage dashImages[kDashAfterimageCount];
+
+    int dashImageIndex = 0;
+
+    // 剣
+    int swordSwingTimer = 0;
+
+    bool swordRequest = false;
+    bool normalSwordRequest = false;
+    bool normalSwordActive = false;
+
+    bool swordHitBoss = false;
+
+    int swordHitFlashTimer = 0;
+
+    // カウンター
+    int counterWindowTimer = 0;
+    bool counterArmed = false;
+
+    bool jumpRequest = false;
+
+    bool justWindow = false;
 };
 
 // 共通関数

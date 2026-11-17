@@ -3,7 +3,10 @@
 
 #include "game.h"
 
-// カウンターエフェクトの描画
+// 演出タイマー更新
+void UpdateEffectTimers(GameState& state);
+
+// カウンターエフェクト描画
 void DrawCounterEffect(
     const CounterEffect& e,
     int shakeX,

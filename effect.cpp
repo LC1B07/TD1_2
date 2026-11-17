@@ -1,6 +1,55 @@
 
 #include "effect.h"
+#include <cmath>
 
+// 演出タイマー更新
+void UpdateEffectTimers(GameState& state) {
+
+    if (state.dashCooldown > 0) {
+        --state.dashCooldown;
+    }
+
+    if (state.dashWave.timer > 0) {
+        --state.dashWave.timer;
+    }
+
+    for (int i = 0; i < kDashAfterimageCount; ++i) {
+
+        if (state.dashImages[i].timer > 0) {
+            --state.dashImages[i].timer;
+        }
+    }
+
+    if (state.counterCooldown > 0) {
+        --state.counterCooldown;
+    }
+
+    if (state.counterEffect.timer > 0) {
+        --state.counterEffect.timer;
+    }
+
+    if (state.bossFlash > 0) {
+        --state.bossFlash;
+    }
+
+    if (state.swordHitFlashTimer > 0) {
+        --state.swordHitFlashTimer;
+    }
+
+    if (state.shakeTimer > 0) {
+        --state.shakeTimer;
+    }
+
+    if (state.specialFlashTimer > 0) {
+        --state.specialFlashTimer;
+    }
+
+    if (state.specialImpactTimer > 0) {
+        --state.specialImpactTimer;
+    }
+}
+
+// カウンターエフェクト描画
 void DrawCounterEffect(
     const CounterEffect& e,
     int shakeX,
@@ -30,10 +79,8 @@ void DrawCounterEffect(
             WithAlpha(0x72DFFFFFu, (int)(190.0f * t));
 
         Novice::DrawEllipse(
-            cx,
-            cy,
-            radius,
-            radius,
+            cx, cy,
+            radius, radius,
             0.0f,
             color,
             kFillModeWireFrame
@@ -50,10 +97,8 @@ void DrawCounterEffect(
             if (radius > 0) {
 
                 Novice::DrawEllipse(
-                    cx,
-                    cy,
-                    radius,
-                    radius,
+                    cx, cy,
+                    radius, radius,
                     0.0f,
                     WithAlpha(
                         0xD7FFFFFFu,
@@ -106,10 +151,8 @@ void DrawCounterEffect(
         );
 
         Novice::DrawEllipse(
-            cx,
-            cy,
-            15,
-            15,
+            cx, cy,
+            15, 15,
             0.0f,
             WithAlpha(0xA8FFFFFFu, 170 - elapsed * 20),
             kFillModeSolid
