@@ -1,5 +1,5 @@
 
-#include "Source/Bullet/bullet.h"
+#include "../Bullet/bullet.h"
 
 // 弾の更新
 void UpdateBullets(GameState& state) {

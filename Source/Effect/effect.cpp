@@ -1,5 +1,5 @@
 
-#include "Source/Effect/effect.h"
+#include "../Effect/effect.h"
 #include <cmath>
 
 // 演出タイマー更新
