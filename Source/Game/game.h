@@ -15,8 +15,8 @@ enum Scene {
 };
 
 // 画面サイズ
-const int kWidth = 1280;
-const int kHeight = 720;
+const int kWidth = 1920;
+const int kHeight = 1080;
 
 // ボス戦の設定
 const float kGroundY = 620.0f;
