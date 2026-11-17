@@ -7,11 +7,15 @@
 
 // シーンの種類
 enum Scene {
-    SCENE_TITLE,
-    SCENE_BOSS,
-    SCENE_GAMEOVER,
-    SCENE_CLEAR,
-    SCENE_CREDITS
+	SCENE_TITLE,         // タイトル
+	SCENE_BGM,           // BGM
+    SCENE_CREDITS,       // クレジット
+    SCENE_TUTORIAL,      // チュートリアル
+    SCENE_BOSS_SELECT,   // ボス選択
+    SCENE_BOSS_A,        // ボスA
+    SCENE_BOSS_B,        // ボスB
+	SCENE_CLEAR,         // クリア
+	SCENE_GAMEOVER       // ゲームオーバー
 };
 
 // 画面サイズ

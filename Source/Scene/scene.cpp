@@ -117,7 +117,7 @@ void UpdateTitleScene(
 
             ResetGameState(state);
 
-            currentScene = SCENE_BOSS;
+            currentScene = SCENE_BOSS_A;
         } else {
 
             currentScene = SCENE_CREDITS;
