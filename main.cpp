@@ -10,8 +10,7 @@
 #include "scene.h"
 #include "fullScreen.h"
 
-const char kWindowTitle[] =
-"LC1D_03_イシダ_ノリヒコ_タイトル";
+const char kWindowTitle[] = "TD1_2";
 
 // Windowsアプリのエントリーポイント
 int WINAPI WinMain(
