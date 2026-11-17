@@ -95,7 +95,32 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_BOSS:
+		case SCENE_BGM:
+
+            break;
+
+		case SCENE_CREDITS:
+
+            UpdateOtherScene(
+                currentScene,
+                titleSelection,
+                keys,
+                preKeys
+            );
+
+            DrawCreditsScene();
+
+            break;
+
+        case SCENE_TUTORIAL:
+
+            break;
+
+        case SCENE_BOSS_SELECT:
+
+            break;
+
+        case SCENE_BOSS_A:
 
             UpdateBossScene(
                 state,
@@ -108,9 +133,7 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_GAMEOVER:
-
-            DrawGameOverScene();
+        case SCENE_BOSS_B:
 
             break;
 
@@ -120,16 +143,9 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_CREDITS:
+        case SCENE_GAMEOVER:
 
-            UpdateOtherScene(
-                currentScene,
-                titleSelection,
-                keys,
-                preKeys
-            );
-
-            DrawCreditsScene();
+            DrawGameOverScene();
 
             break;
 
@@ -145,7 +161,7 @@ int WINAPI WinMain(
         state.shakeY = 0;
 
         if (
-            currentScene == SCENE_BOSS &&
+            currentScene == SCENE_BOSS_A &&
             state.shakeTimer > 0
             ) {
 
