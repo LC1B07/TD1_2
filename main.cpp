@@ -367,7 +367,17 @@ unsigned int FireHash(unsigned int x) {
 }
 
 // 炎の描画専用。ゲーム内の攻撃範囲・衝突判定は元のまま。
-void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
+// maru2.png (64x64) を中心位置と半径を指定して描画する。
+// 元の円と同じ範囲に収まるように、直径を基準に拡縮する。
+void DrawBreathCircleSprite(int texture, float cx, float cy, float radius, unsigned int color) {
+    if (texture < 0 || radius <= 0.0f) return;
+    const float diameter = radius * 2.0f;
+    const float scale = diameter / 64.0f;
+    Novice::DrawSprite((int)(cx - radius), (int)(cy - radius),
+        texture, scale, scale, 0.0f, color);
+}
+
+void DrawDragonFireBreath(const DragonBreath& breath, int breathCircleTexture, int shakeX, int shakeY) {
     if (breath.phase != BREATH_WARNING && breath.phase != BREATH_EXTEND &&
         breath.phase != BREATH_HOLD) return;
 
@@ -391,7 +401,7 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
                 (int)(sy + ny * offset) + shakeY,
                 (int)(ex + nx * offset) + shakeX,
                 (int)(ey + ny * offset) + shakeY,
-                WithAlpha(0xFF666600u, alpha));
+                WithAlpha(0x36BFFFFFu, alpha));
         }
         // 口元に炎の粒が吸い込まれる。予告後半ほど密集し、明るくなる。
         const float charge = (float)breath.timer / (float)kBreathWarningFrames;
@@ -403,19 +413,19 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
             float px = sx + cosf(angle) * radius;
             float py = sy + sinf(angle) * radius;
             int size = 2 + (int)(phase * 5.0f);
-            unsigned int color = (i % 3 == 0) ? 0xFFF1A5FFu :
-                ((i % 3 == 1) ? 0xFF982EFFu : 0xFF5530FFu);
+            unsigned int color = (i % 3 == 0) ? 0xE6FFFFFFu :
+                ((i % 3 == 1) ? 0x62DFFFFFu : 0x168DFFFFu);
             Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
                 size, size, 0.0f, color, kFillModeSolid);
         }
         int mouthRadius = 9 + (int)(charge * 20.0f) + (breath.timer % 5);
-        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
-            mouthRadius + 12, mouthRadius + 12, 0.0f,
-            WithAlpha(0xFF652000u, 75 + (int)(charge * 65)), kFillModeSolid);
-        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
-            mouthRadius, mouthRadius, 0.0f, 0xFFB43BFFu, kFillModeSolid);
-        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
-            mouthRadius / 2, mouthRadius / 2, 0.0f, 0xFFF6C5FFu, kFillModeSolid);
+        // 予告中の口元の円も maru2.png で表示する。
+        DrawBreathCircleSprite(breathCircleTexture, sx + shakeX, sy + shakeY,
+            (float)(mouthRadius + 12), WithAlpha(0x126BD000u, 75 + (int)(charge * 65)));
+        DrawBreathCircleSprite(breathCircleTexture, sx + shakeX, sy + shakeY,
+            (float)mouthRadius, 0x38BFFFFFu);
+        DrawBreathCircleSprite(breathCircleTexture, sx + shakeX, sy + shakeY,
+            (float)(mouthRadius / 2), 0xE8FFFFFFu);
         Novice::ScreenPrintf(430, 105, "DRAGON BREATH WARNING!");
         return;
     }
@@ -442,21 +452,20 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
         float jag = sinf(d * 0.13f + time * 0.35f) * 8.0f;
         int outer = (int)(spread + jag);
         if (outer < 9) outer = 9;
-        // 赤い外炎→橙色の炎→黄色い中心→白熱した芯。
-        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
-            outer, outer, 0.0f, 0xE95016E8u, kFillModeSolid);
-        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
-            (int)(outer * 0.69f), (int)(outer * 0.69f), 0.0f,
-            0xFF9D25F0u, kFillModeSolid);
-        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
-            (int)(outer * 0.38f), (int)(outer * 0.38f), 0.0f,
-            0xFFE178FFu, kFillModeSolid);
-        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
-            (int)(outer * 0.18f) + 2, (int)(outer * 0.18f) + 2, 0.0f,
-            0xFFFBE3FFu, kFillModeSolid);
+        // 以前の4層の円を maru2.png に置き換える。
+        // 半透明の青い本体に、従来の maru.png 加算発光を重ねる。
+        DrawBreathCircleSprite(breathCircleTexture, cx + shakeX, cy + shakeY,
+            (float)outer, 0x096BED48u);
+        DrawBreathCircleSprite(breathCircleTexture, cx + shakeX, cy + shakeY,
+            outer * 0.69f, 0x159FFF68u);
+        DrawBreathCircleSprite(breathCircleTexture, cx + shakeX, cy + shakeY,
+            outer * 0.38f, 0x62DFFF88u);
+        DrawBreathCircleSprite(breathCircleTexture, cx + shakeX, cy + shakeY,
+            outer * 0.18f + 2.0f, 0xE9FFFFFFu);
+
     }
 
-    // 流れる火の粉：発射方向に進みながら左右へ散る。
+    // 流れる火の粉：発射方向に進みながら左右へ散
     for (int i = 0; i < 64; ++i) {
         unsigned int seed = FireHash((unsigned int)i * 1381u + 29u);
         float u = fmodf((float)(seed % 1000u) / 1000.0f + time * (0.009f + (i % 4) * 0.002f), 1.0f);
@@ -467,8 +476,8 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
         float px = sx + dx * d + nx * (side + flicker);
         float py = sy + dy * d + ny * (side + flicker);
         int r = 2 + (int)((seed >> 22) % 5u);
-        unsigned int color = (i % 3 == 0) ? 0xFFFAC5E8u :
-            ((i % 3 == 1) ? 0xFF9C2BD8u : 0xFF5322B8u);
+        unsigned int color = (i % 3 == 0) ? 0xE5FFFFFFu :
+            ((i % 3 == 1) ? 0x66DFFFFFu : 0x178EFFFFu);
         Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
             r, r, 0.0f, color, kFillModeSolid);
     }
@@ -485,7 +494,7 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
                 float px = ix + cosf(angle) * burst;
                 float py = (float)iy + sinf(angle) * burst * 0.7f;
                 int r = 3 + (i % 5);
-                unsigned int color = i % 2 ? 0xFFB132E0u : 0xFFE879F0u;
+                unsigned int color = i % 2 ? 0x35C8FFE0u : 0xA3F0FFF0u;
                 Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
                     r, r, 0.0f, color, kFillModeSolid);
             }
@@ -493,11 +502,78 @@ void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
                 int rx = 18 + i * 17 + (breath.timer % 8);
                 Novice::DrawEllipse((int)ix + shakeX, iy + shakeY,
                     rx, 8 + i * 3, 0.0f,
-                    WithAlpha(0xFF782000u, 130 - i * 20), kFillModeWireFrame);
+                    WithAlpha(0x198AE000u, 130 - i * 20), kFillModeWireFrame);
             }
         }
     }
     Novice::ScreenPrintf(510, 105, "DRAGON BREATH!");
+}
+
+// maru.png (64x64) を加算合成で重ねるブレス専用の発光演出。
+// 当たり判定や攻撃タイマーは変更せず、描画だけを追加する。
+void DrawBreathGlow(const DragonBreath& breath, int maruTexture, int shakeX, int shakeY) {
+    if (maruTexture < 0) return; // 画像が読み込めなかった場合は描画しない
+    if (breath.phase != BREATH_WARNING && breath.phase != BREATH_EXTEND &&
+        breath.phase != BREATH_HOLD) return;
+
+    // DrawSprite は左上座標なので、64x64の画像を中心基準で描画する。
+    const float imageSize = 64.0f;
+    const float sx = breath.startX + (float)shakeX;
+    const float sy = breath.startY + (float)shakeY;
+    const float flicker = 1.0f + 0.08f * sinf((float)breath.timer * 0.45f);
+
+    Novice::SetBlendMode(kBlendModeAdd);
+
+    if (breath.phase == BREATH_WARNING) {
+        // 発射前は龍の口元に光を溜める。予告時間に応じて少しずつ強くする。
+        float charge = (float)breath.timer / (float)kBreathWarningFrames;
+        if (charge > 1.0f) charge = 1.0f;
+        const float outerSize = (85.0f + 105.0f * charge) * flicker;
+        const float innerSize = (30.0f + 42.0f * charge) * flicker;
+        Novice::DrawSprite((int)(sx - outerSize * 0.5f), (int)(sy - outerSize * 0.5f),
+            maruTexture, outerSize / imageSize, outerSize / imageSize, 0.0f,
+            WithAlpha(0x0D78FF00u, 42 + (int)(charge * 55.0f)));
+        Novice::DrawSprite((int)(sx - innerSize * 0.5f), (int)(sy - innerSize * 0.5f),
+            maruTexture, innerSize / imageSize, innerSize / imageSize, 0.0f,
+            WithAlpha(0x37C5FF00u, 100 + (int)(charge * 95.0f)));
+        Novice::DrawSprite((int)(sx - innerSize * 0.22f), (int)(sy - innerSize * 0.22f),
+            maruTexture, innerSize * 0.44f / imageSize, innerSize * 0.44f / imageSize, 0.0f,
+            WithAlpha(0xE0F9FF00u, 145 + (int)(charge * 100.0f)));
+    }
+    else {
+        // ブレスに沿って光を重ねる。描画枚数を抑えるため36px間隔にする。
+        float length = breath.length;
+        if (length > 1600.0f) length = 1600.0f;
+        for (float d = 0.0f; d <= length; d += 36.0f) {
+            float cx = sx + breath.dirX * d;
+            float cy = sy + breath.dirY * d;
+            float spread = 14.0f + 0.07f * d;
+            if (spread > 112.0f) spread = 112.0f;
+            float outerSize = (spread * 2.5f + 38.0f) * flicker;
+            float coreSize = (spread * 0.7f + 18.0f) * flicker;
+            // 広く薄い青い光
+            Novice::DrawSprite((int)(cx - outerSize * 0.5f), (int)(cy - outerSize * 0.5f),
+                maruTexture, outerSize / imageSize, outerSize / imageSize, 0.0f,
+                WithAlpha(0x0D78FF00u, 46));
+            // 中心付近の明るい水色の発光
+            Novice::DrawSprite((int)(cx - coreSize * 0.5f), (int)(cy - coreSize * 0.5f),
+                maruTexture, coreSize / imageSize, coreSize / imageSize, 0.0f,
+                WithAlpha(0x72DFFF00u, 120));
+            // 小さな青白い芯を重ね、中心だけを強く光らせる。
+            const float brightSize = coreSize * 0.48f;
+            Novice::DrawSprite((int)(cx - brightSize * 0.5f), (int)(cy - brightSize * 0.5f),
+                maruTexture, brightSize / imageSize, brightSize / imageSize, 0.0f,
+                WithAlpha(0xE7FAFF00u, 105));
+        }
+        // 龍の口元の強い発光
+        const float mouthSize = 110.0f * flicker;
+        Novice::DrawSprite((int)(sx - mouthSize * 0.5f), (int)(sy - mouthSize * 0.5f),
+            maruTexture, mouthSize / imageSize, mouthSize / imageSize, 0.0f,
+            WithAlpha(0xBDF4FF00u, 195));
+    }
+
+    // 後続の画像やUIが加算合成にならないよう必ず元に戻す。
+    Novice::SetBlendMode(kBlendModeNormal);
 }
 
 const char kWindowTitle[] = "LC1D_03_イシダ_ノリヒコ_タイトル";
@@ -522,7 +598,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     const int bossIdleTexture = Novice::LoadTexture("./Resources/ryu.png");
     int bossIdleTimer = 0;
     int bossIdleFrame = 0; // 0～3の4コマを順番に再生
-
+    //ブレンディングで利用するまるpng
+    int maruTexture = Novice::LoadTexture("./Resources/maru.png");
+    // ブレス本体の円形描画を置き換える64x64画像
+    int breathCircleTexture = Novice::LoadTexture("./Resources/maru2.png");
 
     // キー入力結果を受け取る箱
     char keys[256] = { 0 };
@@ -590,12 +669,15 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
         // キーボード操作を残したまま、既存の当たり判定・パリィ受付・シーン遷移を共用。
         Controller::Update();
         if (Controller::IsConnected()) {
-            // Noviceのボタン番号はkPadButton.txtの対応表を使用する。
+            // Noviceのボタン番号はkPadButton.txtの対応表を使用する。0.3はコントローラーのでっとゾーン
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////
+            ////////////////////////////////////////////////////////////////////////////////////////////////////////
             const bool left = Controller::IsDown(kPadButton2) || Controller::GetLeftStickX() < -0.30f;
             const bool right = Controller::IsDown(kPadButton3) || Controller::GetLeftStickX() > 0.30f;
-            const bool upPad = Controller::IsDown(kPadButton0) || Controller::GetLeftStickY() > 0.30f;
-            const bool downPad = Controller::IsDown(kPadButton1) || Controller::GetLeftStickY() < -0.30f;
-
+            const bool upPad = Controller::IsDown(kPadButton0) || Controller::GetLeftStickY() < 0.30f;
+            const bool downPad = Controller::IsDown(kPadButton1) || Controller::GetLeftStickY() > -0.30f;
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
             if (left) keys[DIK_A] = 1;
             if (right) keys[DIK_D] = 1;
             if (upPad) keys[DIK_W] = 1;
@@ -616,11 +698,13 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 break;
             }
 
+            //コントローラーのキー入力はここ↓↓
+            ///////////////////////////////////////////////////
             if (Controller::IsDown(kPadButton11)) keys[DIK_LSHIFT] = 1; // B: ダッシュ
-            if (Controller::IsDown(kPadButton12)) keys[DIK_H] = 1; // X: 剣
+            if (Controller::IsDown(kPadButton15)) keys[DIK_H] = 1; // L2: 剣
             if (Controller::IsDown(kPadButton13)) keys[DIK_J] = 1; // Y: パリィ
-            if (Controller::IsDown(kPadButton8)) keys[DIK_J] = 1; // LB: パリィ
-            if (Controller::IsDown(kPadButton9)) keys[DIK_LSHIFT] = 1; // RB: ダッシュ
+            if (Controller::IsDown(kPadButton9)) keys[DIK_J] = 1; // R1: パリィ
+            if (Controller::IsDown(kPadButton14)) keys[DIK_LSHIFT] = 1; // R2: ダッシュ
             if (Controller::IsDown(kPadButton4)) keys[DIK_RETURN] = 1; // START: 決定
             if (Controller::IsDown(kPadButton5)) keys[DIK_ESCAPE] = 1; // BACK: 終了
         }
@@ -862,7 +946,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 }
             }
             else if (charge.phase == CHARGE_FALL) {
-                // パリィされた龍は勢いを失い、回転しながら地面へ落ちる。
+                // パリィされた龍は勢いを失u
                 ++charge.timer;
                 charge.fallVelocityY += kChargeFallGravity;
                 charge.y += charge.fallVelocityY;
@@ -961,7 +1045,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             }
 
             const bool justPressedJ = keys[DIK_J] && !preKeys[DIK_J];
-            // しっぽは演出中も実フレームで進める（カウンター入力を見逃さない）。
+            // しっぽは演出中も実フレームで進める）。
             // 発射方向は予告終了時のプレイヤー中心に固定する。
             if (wire.phase == WIRE_WARNING) {
                 if (++wire.timer >= kWireWarningFrames) {
@@ -1435,17 +1519,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         bossIdleTexture,
                         0.25f, 1.0f, 0.0f, 0xFFFFFFFFu); // 切り出した1920x1080を等倍描画
                 }
-                else {
-                    // 読み込みに失敗した場合は確認用の矩形を表示する。
-                    Novice::DrawBox((int)boss.x + shakeX, (int)boss.y + shakeY,
-                        (int)kBossWidth, (int)kBossHeight, 0.0f,
-                        0xE15B65FFu, kFillModeSolid);
-                }
+
             }
-            if (bossIdleTexture < 0) {
-                Novice::ScreenPrintf(20, 300,
-                    "ERROR: Resources/ryu.png NOT FOUND");
-            }
+
             // 突進中の龍はボスの代わりに横長のシルエットとして画面を横断する。
             if (charge.phase == CHARGE_WARNING || charge.phase == CHARGE_LEAVE) {
                 // 突進方向と一致する斜めの予告帯。
@@ -1565,7 +1641,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             }
             // 龍のブレス：予告時は口元に炎を集め、発射中はうねる炎・火の粉・着弾炎を描画。
             // 見た目だけを変更。DragonBreathの長さ、方向、当たり判定には触れない。
-            DrawDragonFireBreath(breath, shakeX, shakeY);
+            DrawDragonFireBreath(breath, breathCircleTexture, shakeX, shakeY);
+            // maru.pngを加算合成で重ねて、炎に光の層を追加する。
+            DrawBreathGlow(breath, maruTexture, shakeX, shakeY);
             if (breath.hitFlash > 0) {
                 Novice::ScreenPrintf(475, 215, "BREATH HIT! (TEST INVINCIBLE)");
             }
