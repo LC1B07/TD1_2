@@ -9,6 +9,7 @@
 #include "Source/Effect/effect.h"
 #include "Source/Scene/scene.h"
 #include "Source/FullScreen/fullScreen.h"
+#include "Source/Controller/Controller.h"
 
 // 開発補助用　GUI
 #ifdef USE_IMGUI     // #ifdef USE_IMGUI と #endif　で囲う
