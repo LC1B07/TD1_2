@@ -245,7 +245,7 @@ void UpdateBossScene(
     if (updateGame) {
 
         // プレイヤー更新
-        UpdatePlayer(state, keys);
+        UpdatePlayer(state, keys, preKeys);
 
         // ボス更新
         UpdateBoss(
