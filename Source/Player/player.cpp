@@ -35,13 +35,13 @@ void UpdatePlayer(
     // 移動入力
     float moveX = 0.0f;
 
-    // Aキーを押した瞬間
-    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0) {
+    // Aキーを押している間
+    if (keys[DIK_A] != 0) {
         moveX -= 1.0f;
     }
 
-    // Dキーを押した瞬間
-    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0) {
+    // Dキーを押している間
+    if (keys[DIK_D] != 0) {
         moveX += 1.0f;
     }
 
