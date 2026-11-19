@@ -1,4 +1,3 @@
-#include <Novice.h>
 
 #include "../Controller/Controller.h"
 
