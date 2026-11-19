@@ -186,6 +186,7 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Controller.cpp" />
     <ClCompile Include="Source\Boss\boss.cpp" />
     <ClCompile Include="Source\Bullet\bullet.cpp" />
     <ClCompile Include="C:\KamataEngine\Adapter\Novice.cpp" />
@@ -198,6 +199,7 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\DirectXGame\3d\Camera.h" />
+    <ClInclude Include="Controller.h" />
     <ClInclude Include="Source\Boss\boss.h" />
     <ClInclude Include="Source\Bullet\bullet.h" />
     <ClInclude Include="C:\KamataEngine\DirectXGame\base\StringUtility.h" />
