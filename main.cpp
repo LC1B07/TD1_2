@@ -10,6 +10,11 @@
 #include "Source/Scene/scene.h"
 #include "Source/FullScreen/fullScreen.h"
 
+// 開発補助用　GUI
+#ifdef USE_IMGUI     // #ifdef USE_IMGUI と #endif　で囲う
+#include <imgui.h>  
+#endif
+
 const char kWindowTitle[] = "TD1_2";
 
 // Windowsアプリのエントリーポイント
@@ -77,6 +82,21 @@ int WINAPI WinMain(
         // 更新処理
         // --------------------------------
 
+        // ウィンドウの初期サイズを設定 
+        // ImGuiCond_FirstUseEver == 初回だけサイズを指定
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_FirstUseEver);
+
+        // ImGui::Begin("Debug"); と ImGui::End();　で挟むことで、ImGuiのウィンドウを作成することができる
+        ImGui::Begin("Debug");
+       
+        ImGui::Combo(
+            "BlendMode",
+            reinterpret_cast<int*>(&currentScene),
+            "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
+        );
+
+        ImGui::End();
+
         DrawBackground();
 
         switch (currentScene) {
@@ -111,6 +131,12 @@ int WINAPI WinMain(
             break;
 
         case SCENE_TUTORIAL:
+
+            UpdateBossScene(
+                state,
+                keys,
+                preKeys
+            );
 
             break;
 
