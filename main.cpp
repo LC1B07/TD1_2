@@ -1,6 +1,9 @@
-#include <Novice.h>
+﻿#include <Novice.h>
+#include "Controller.h"
 #include <cstring>
 #include <cmath>
+#include <cstdlib>
+#include <ctime>
 
 // シーンの種類
 enum Scene {
@@ -12,8 +15,13 @@ enum Scene {
 };
 
 // 全シーン共通の背景色（パーティクルなし）
-const int kWidth = 1280;
-const int kHeight = 720;
+const int kWidth = 1920;
+const int kHeight = 1080;
+// ボスは画面右端に固定し、画面の高さ全体を覆う大型の矩形にする。
+const float kBossWidth = 450.0f;
+const float kBossHeight = 1080.0f;
+const float kBossWireOffsetX = 12.0f;
+const float kBossWireOffsetY = 360.0f;
 void DrawBackground() {
     Novice::DrawBox(0, 0, kWidth, kHeight, 0.0f, 0x151826FF, kFillModeSolid);
 }
@@ -44,7 +52,7 @@ void DrawMenuButton(int x, int y, const char* label, bool selected) {
 
 // ボス戦の設定（60FPSを想定：180フレーム = 約3秒）
 // A/Dで左右移動、SPACEでジャンプ。空中ダッシュ中はW/Sで上下方向も指定可能。Hは通常攻撃。
-const float kGroundY = 620.0f;
+const float kGroundY = 930.0f;
 const float kGravity = 0.55f;
 const float kJumpPower = -12.0f;
 const float kMoveSpeed = 5.0f;
@@ -62,7 +70,10 @@ const float kSwordHitHeight = 100.0f;
 // 16Fの斬撃のうち中盤12Fのみ攻撃判定を出す
 const int kSwordHitStart = 14;
 const int kSwordHitEnd = 3;
-const int kShotInterval = 180;
+// 攻撃は共通スケジューラから1種類ずつ選択する
+const int kAttackWaitMin = 75;  // 攻撃終了後の最短待機（実フレーム）
+const int kAttackWaitRandom = 76; // 0～75フレームを加算
+
 const float kCounterBulletSpeed = 23.0f; // 反射弾の速さ（元は13）
 const int kCounterShakeFrames = 12; // 強いシェイクの長さ
 const float kCounterShakePower = 14.0f; // 揺れ幅（ピクセル）
@@ -100,6 +111,73 @@ struct DashWave {
     int timer;
 };
 
+// 龍のしっぽ拘束攻撃：地面の予告→地中から突き上げ→拘束→後隙
+// 60FPS想定。ワイヤーが触れる瞬間にJでカウンターすると拘束を防げる。
+enum WirePhase { WIRE_IDLE, WIRE_WARNING, WIRE_FLYING, WIRE_BOUND, WIRE_RECOVERY };
+const int kWireInterval = 300;
+const int kWireWarningFrames = 90; // 予告を1.5秒に延長（以前は0.5秒）
+const int kWireMaxBoundFrames = 125;
+const float kWireSpeed = 16.0f; // しっぽが地面から伸びる速度
+struct WireAttack {
+    WirePhase phase;
+    int timer;
+    float x, y;
+    float vx, vy;
+    float targetX, targetY;
+    float groundX, groundY; // しっぽが地面から現れる固定位置
+    int flashTimer;
+    bool escaped;
+};
+
+// 巨大龍ブレス：右上の口からプレイヤーの位置へ照準を固定して発射。
+// 予告線を見てジャンプ・空中ダッシュで射線から逃げる。
+enum BreathPhase { BREATH_IDLE, BREATH_WARNING, BREATH_EXTEND, BREATH_HOLD, BREATH_RECOVERY };
+const int kBreathInterval = 420; // 約7秒ごと（実フレーム）
+const int kBreathWarningFrames = 75;
+const int kBreathExtendFrames = 28;
+const int kBreathHoldFrames = 65;
+const int kBreathRecoveryFrames = 45;
+const float kBreathRadius = 45.0f; // ブレスの半径
+const float kDragonMouthOffsetX = 25.0f; // 右上にある龍の口（ボス左端基準）
+const float kDragonMouthY = 115.0f;
+struct DragonBreath {
+    BreathPhase phase;
+    int timer;
+    int waitTimer;
+    float startX, startY; // 龍の口
+    float dirX, dirY;     // 予告開始時に固定した照準方向
+    float length;         // 伸びたブレスの長さ
+    int hitFlash;
+    int hitCooldown;
+};
+
+// 画面外からの龍突進：予告→退避→左から高速突進→後隙。
+// 突進はプレイヤーの高さを予告開始時に固定する。
+enum ChargePhase { CHARGE_IDLE, CHARGE_WARNING, CHARGE_LEAVE, CHARGE_RUSH, CHARGE_FALL, CHARGE_DOWN, CHARGE_GETUP, CHARGE_RECOVERY };
+const int kChargeWarningFrames = 85;  // 約1.4秒の予告
+const int kChargeLeaveFrames = 24;    // 画面外へ移動する時間
+const int kChargeRecoveryFrames = 45;
+const float kChargeSpeed = 32.0f;
+const float kChargeWidth = 230.0f;
+const float kChargeHeight = 110.0f;
+const int kChargeDownFrames = 240; // ダウン時間：60FPSで4秒
+const int kChargeGetupFrames = 35;
+const float kChargeFallGravity = 1.25f;
+struct DragonCharge {
+    ChargePhase phase;
+    int timer;
+    float x, y;
+    float targetY;
+    float vx, vy; // ランダム角度の突進速度
+    float angle;  // 描画用角度（ラジアン）
+    int hitFlash;
+    bool hitOnce;
+    float fallVelocityY; // パリィ後の落下速度
+    float fallSpin;      // 墜落中の回転角度
+    int dustTimer;       // 着地の土煙（実フレーム）
+    int downHitFlash;    // ダウン中に剣が命中した演出
+};
+
 struct Boss {
     float x, y;
     int shotTimer;
@@ -129,6 +207,45 @@ struct CounterEffect {
     int timer;
     bool enhanced; // ダッシュジャストカウンターの大きな衝撃波か
 };
+
+// カウンター成功時の画像演出。画像は Resources フォルダから読み込む。
+// 表示は実フレームで進むので、ヒットストップ・スロー中も自然に動く。
+enum CounterTextType { COUNTER_TEXT_NONE, COUNTER_TEXT_PARRY, COUNTER_TEXT_PERFECT, COUNTER_TEXT_BREAK };
+const int kCounterTextFrames = 32;
+struct CounterTextEffect {
+    CounterTextType type;
+    int timer;
+    float x, y; // 画面座標（シェイクは加算しない）
+};
+
+void StartCounterText(CounterTextEffect& effect, CounterTextType type, float x, float y) {
+    effect = { type, kCounterTextFrames, x, y };
+}
+
+void DrawCounterText(const CounterTextEffect& effect, int parryTexture,
+    int perfectTexture, int breakTexture) {
+    if (effect.timer <= 0 || effect.type == COUNTER_TEXT_NONE) return;
+    int texture = -1;
+    if (effect.type == COUNTER_TEXT_PARRY) texture = parryTexture;
+    if (effect.type == COUNTER_TEXT_PERFECT) texture = perfectTexture;
+    if (effect.type == COUNTER_TEXT_BREAK) texture = breakTexture;
+    if (texture < 0) return;
+
+    const int elapsed = kCounterTextFrames - effect.timer;
+    // 128x128の画像内に文字が描かれている。透明部分も含めて中央揃え。
+    // 0～5Fで勢いよく拡大、6～13Fで落ち着き、後半は上へ浮かびながら消える。
+    float scale = 1.0f;
+    if (elapsed < 6) scale = 0.85f + 0.25f * (float)elapsed;
+    else if (elapsed < 14) scale = 2.10f - 0.065f * (float)(elapsed - 6);
+    else scale = 1.58f;
+    int alpha = 255;
+    if (effect.timer < 12) alpha = effect.timer * 255 / 12;
+    float rise = elapsed > 12 ? (float)(elapsed - 12) * 2.0f : 0.0f;
+    // DrawSpriteの位置は画像左上なので、画像サイズを基準に中央へ配置する。
+    Novice::DrawSprite((int)(effect.x - 64.0f * scale),
+        (int)(effect.y - rise - 64.0f * scale), texture,
+        scale, scale, 0.0f, WithAlpha(0xFFFFFFFFu, alpha));
+}
 
 void DrawCounterEffect(const CounterEffect& e, int shakeX, int shakeY) {
     if (e.timer <= 0) return;
@@ -192,8 +309,8 @@ bool IsHit(float ax, float ay, float aw, float ah,
 }
 
 void ResetBossBattle(Player& player, Boss& boss, Bullet bullets[]) {
-    player = { 140.0f, kGroundY - 48.0f, 1, 0.0f, true };
-    boss = { 1020.0f, 300.0f, 0 };
+    player = { 210.0f, kGroundY - 48.0f, 1, 0.0f, true };
+    boss = { kWidth - kBossWidth, 0.0f, 0 };
     for (int i = 0; i < kMaxBullets; ++i) bullets[i].active = false;
 }
 
@@ -239,13 +356,173 @@ void DrawSword(const Player& player, int swingTimer, int shakeX, int shakeY) {
         (int)(cx + dy * 7.0f), (int)(cy - dx * 7.0f), 0xFFFFFFFFu);
 }
 
+// 描画専用の疑似乱数：毎フレームの炎を安定してちらつかせる。
+// rand()を使わないのでボスのランダム攻撃順には影響しない。
+unsigned int FireHash(unsigned int x) {
+    x ^= x >> 16;
+    x *= 0x7feb352du;
+    x ^= x >> 15;
+    x *= 0x846ca68bu;
+    return x ^ (x >> 16);
+}
+
+// 炎の描画専用。ゲーム内の攻撃範囲・衝突判定は元のまま。
+void DrawDragonFireBreath(const DragonBreath& breath, int shakeX, int shakeY) {
+    if (breath.phase != BREATH_WARNING && breath.phase != BREATH_EXTEND &&
+        breath.phase != BREATH_HOLD) return;
+
+    const float sx = breath.startX;
+    const float sy = breath.startY;
+    const float dx = breath.dirX;
+    const float dy = breath.dirY;
+    const float nx = -dy;
+    const float ny = dx;
+    const float pi = 3.14159265f;
+    const float time = (float)breath.timer;
+
+    if (breath.phase == BREATH_WARNING) {
+        // 既存の攻撃範囲の予告線を残す。
+        const float ex = sx + dx * 1600.0f;
+        const float ey = sy + dy * 1600.0f;
+        const int alpha = 65 + (breath.timer % 16) * 8;
+        for (int side = -1; side <= 1; ++side) {
+            float offset = side * kBreathRadius;
+            Novice::DrawLine((int)(sx + nx * offset) + shakeX,
+                (int)(sy + ny * offset) + shakeY,
+                (int)(ex + nx * offset) + shakeX,
+                (int)(ey + ny * offset) + shakeY,
+                WithAlpha(0xFF666600u, alpha));
+        }
+        // 口元に炎の粒が吸い込まれる。予告後半ほど密集し、明るくなる。
+        const float charge = (float)breath.timer / (float)kBreathWarningFrames;
+        for (int i = 0; i < 20; ++i) {
+            unsigned int seed = FireHash((unsigned int)i * 971u + 19u);
+            float angle = (float)(seed % 628u) * 0.01f;
+            float phase = fmodf(charge * (1.7f + (i % 4) * 0.13f) + (float)(i % 17) / 17.0f, 1.0f);
+            float radius = (1.0f - phase) * (90.0f + (float)(seed % 65u));
+            float px = sx + cosf(angle) * radius;
+            float py = sy + sinf(angle) * radius;
+            int size = 2 + (int)(phase * 5.0f);
+            unsigned int color = (i % 3 == 0) ? 0xFFF1A5FFu :
+                ((i % 3 == 1) ? 0xFF982EFFu : 0xFF5530FFu);
+            Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
+                size, size, 0.0f, color, kFillModeSolid);
+        }
+        int mouthRadius = 9 + (int)(charge * 20.0f) + (breath.timer % 5);
+        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
+            mouthRadius + 12, mouthRadius + 12, 0.0f,
+            WithAlpha(0xFF652000u, 75 + (int)(charge * 65)), kFillModeSolid);
+        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
+            mouthRadius, mouthRadius, 0.0f, 0xFFB43BFFu, kFillModeSolid);
+        Novice::DrawEllipse((int)sx + shakeX, (int)sy + shakeY,
+            mouthRadius / 2, mouthRadius / 2, 0.0f, 0xFFF6C5FFu, kFillModeSolid);
+        Novice::ScreenPrintf(430, 105, "DRAGON BREATH WARNING!");
+        return;
+    }
+
+    // 画面外へ延びる炎は描画せず、衝突判定には一切影響させない。
+    float length = breath.length;
+    if (length <= 0.0f) return;
+    if (length > 1600.0f) length = 1600.0f;
+    // 炎は遠くほど広がる。中心の当たり判定は従来の半径45pxのまま。
+    // 外側の炎・火の粉は演出用で、当たり判定を持たない。
+    // 2000スプライト上限対策：炎の断面を24px間隔に間引く。
+    // 1断面4枚 + 火の粉64枚 + 着弾演出最大17枚に制限。
+    const float kFireSegmentStep = 24.0f;
+    const int segmentCount = (int)(length / kFireSegmentStep) + 1;
+    for (int i = 0; i < segmentCount; ++i) {
+        float d = (float)i * kFireSegmentStep;
+        if (d > length) d = length;
+        float spread = 14.0f + 0.068f * d;
+        if (spread > 112.0f) spread = 112.0f;
+        float sway = sinf(d * 0.037f - time * 0.23f) * (4.0f + d * 0.012f)
+            + sinf(d * 0.083f + time * 0.17f) * 6.0f;
+        float cx = sx + dx * d + nx * sway;
+        float cy = sy + dy * d + ny * sway;
+        float jag = sinf(d * 0.13f + time * 0.35f) * 8.0f;
+        int outer = (int)(spread + jag);
+        if (outer < 9) outer = 9;
+        // 赤い外炎→橙色の炎→黄色い中心→白熱した芯。
+        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
+            outer, outer, 0.0f, 0xE95016E8u, kFillModeSolid);
+        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
+            (int)(outer * 0.69f), (int)(outer * 0.69f), 0.0f,
+            0xFF9D25F0u, kFillModeSolid);
+        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
+            (int)(outer * 0.38f), (int)(outer * 0.38f), 0.0f,
+            0xFFE178FFu, kFillModeSolid);
+        Novice::DrawEllipse((int)cx + shakeX, (int)cy + shakeY,
+            (int)(outer * 0.18f) + 2, (int)(outer * 0.18f) + 2, 0.0f,
+            0xFFFBE3FFu, kFillModeSolid);
+    }
+
+    // 流れる火の粉：発射方向に進みながら左右へ散る。
+    for (int i = 0; i < 64; ++i) {
+        unsigned int seed = FireHash((unsigned int)i * 1381u + 29u);
+        float u = fmodf((float)(seed % 1000u) / 1000.0f + time * (0.009f + (i % 4) * 0.002f), 1.0f);
+        float d = u * length;
+        float spread = 19.0f + d * 0.11f;
+        float side = ((float)((seed >> 10) % 2001u) / 1000.0f - 1.0f) * spread;
+        float flicker = sinf(time * 0.31f + i * 2.1f) * 5.0f;
+        float px = sx + dx * d + nx * (side + flicker);
+        float py = sy + dy * d + ny * (side + flicker);
+        int r = 2 + (int)((seed >> 22) % 5u);
+        unsigned int color = (i % 3 == 0) ? 0xFFFAC5E8u :
+            ((i % 3 == 1) ? 0xFF9C2BD8u : 0xFF5322B8u);
+        Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
+            r, r, 0.0f, color, kFillModeSolid);
+    }
+
+    // 地面(kGroundY)と炎の中心線が交差する位置に着弾炎を描画。
+    if (dy > 0.001f) {
+        float impactDistance = (kGroundY - sy) / dy;
+        if (impactDistance >= 0.0f && impactDistance <= length) {
+            float ix = sx + dx * impactDistance;
+            int iy = (int)kGroundY;
+            for (int i = 0; i < 12; ++i) {
+                float angle = pi + pi * (float)i / 11.0f;
+                float burst = 16.0f + (float)((i * 37 + breath.timer * 11) % 95);
+                float px = ix + cosf(angle) * burst;
+                float py = (float)iy + sinf(angle) * burst * 0.7f;
+                int r = 3 + (i % 5);
+                unsigned int color = i % 2 ? 0xFFB132E0u : 0xFFE879F0u;
+                Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
+                    r, r, 0.0f, color, kFillModeSolid);
+            }
+            for (int i = 0; i < 3; ++i) {
+                int rx = 18 + i * 17 + (breath.timer % 8);
+                Novice::DrawEllipse((int)ix + shakeX, iy + shakeY,
+                    rx, 8 + i * 3, 0.0f,
+                    WithAlpha(0xFF782000u, 130 - i * 20), kFillModeWireFrame);
+            }
+        }
+    }
+    Novice::ScreenPrintf(510, 105, "DRAGON BREATH!");
+}
+
 const char kWindowTitle[] = "LC1D_03_イシダ_ノリヒコ_タイトル";
 
 // Windowsアプリでのエントリーポイント(main関数)
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
     // ライブラリの初期化
-    Novice::Initialize(kWindowTitle, 1280, 720);
+    Novice::Initialize(kWindowTitle, kWidth, kHeight);
+    Controller::Initialize(); // ゲームパッドのデッドゾーンを初期化
+    srand((unsigned int)time(nullptr)); // 攻撃順序を毎回ランダムにする
+    // カウンター表示画像（実行ファイルの作業フォルダからの相対パス）
+    const int parryTexture = Novice::LoadTexture("./Resources/PARRY.png");
+    const int perfectTexture = Novice::LoadTexture("./Resources/PERFECT.png");
+    const int breakTexture = Novice::LoadTexture("./Resources/BREAK.png");
+    // ボス待機アニメーション：7680x1080の横4コマ画像を1枚のまま使用。
+    // 各フレームは1920x1080。Resources/ryu.png に配置する。
+    const int kBossIdleFrameCount = 4;
+    const int kBossIdleFrameDuration = 10;
+    const int kBossIdleFrameWidth = 450;
+    const int kBossIdleFrameHeight = 1080;
+    const int bossIdleTexture = Novice::LoadTexture("./Resources/ryu.png");
+    int bossIdleTimer = 0;
+    int bossIdleFrame = 0; // 0～3の4コマを順番に再生
+
 
     // キー入力結果を受け取る箱
     char keys[256] = { 0 };
@@ -258,6 +535,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     Bullet bullets[kMaxBullets] = {};
     ResetBossBattle(player, boss, bullets);
     CounterEffect counterEffect = {};
+    CounterTextEffect counterText = {};
     int counterCooldown = 0;
     int bossFlash = 0;
     int hitStopTimer = 0; // 残りヒットストップ時間（実フレーム）
@@ -274,6 +552,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     // ダッシュの状態と演出
     bool dashRequest = false;
     int dashTimer = 0;
+    int dashDodgeEffect = 0; // ダッシュ回避成功の表示時間
     int dashCooldown = 0;
     float dashDirX = 0.0f;
     float dashDirY = 0.0f;
@@ -289,6 +568,14 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     int counterWindowTimer = 0; // Jを押した後のジャスト判定残り時間
     bool counterArmed = false; // この押下でジャストカウンター可能か
     bool jumpRequest = false; // ヒットストップ中でもジャンプ入力を保持
+    DragonBreath breath = {};
+    DragonCharge charge = {};
+    WireAttack wire = {};
+    int wireWait = 0; // 互換用（ワイヤーの自動発動には使わない）
+    int nextAttackWait = kAttackWaitMin;
+    int lastAttack = -1; // 0:通常弾 1:しっぽ 2:ブレス 3:突進
+    bool attackInProgress = false;
+    int wireEscapeEffect = 0;
 
     // ウィンドウの×ボタンが押されるまでループ
     while (Novice::ProcessMessage() == 0) {
@@ -298,6 +585,45 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
         // キー入力を受け取る
         memcpy(preKeys, keys, 256);
         Novice::GetHitKeyStateAll(keys);
+
+        // ゲームパッド入力を既存のキー操作に合成する。
+        // キーボード操作を残したまま、既存の当たり判定・パリィ受付・シーン遷移を共用。
+        Controller::Update();
+        if (Controller::IsConnected()) {
+            // Noviceのボタン番号はkPadButton.txtの対応表を使用する。
+            const bool left = Controller::IsDown(kPadButton2) || Controller::GetLeftStickX() < -0.30f;
+            const bool right = Controller::IsDown(kPadButton3) || Controller::GetLeftStickX() > 0.30f;
+            const bool upPad = Controller::IsDown(kPadButton0) || Controller::GetLeftStickY() > 0.30f;
+            const bool downPad = Controller::IsDown(kPadButton1) || Controller::GetLeftStickY() < -0.30f;
+
+            if (left) keys[DIK_A] = 1;
+            if (right) keys[DIK_D] = 1;
+            if (upPad) keys[DIK_W] = 1;
+            if (downPad) keys[DIK_S] = 1;
+
+            // Aボタンはシーンによって役割を変更する。
+            switch (currentScene) {
+            case SCENE_BOSS:
+                if (Controller::IsDown(kPadButton10)) keys[DIK_SPACE] = 1; // A: ジャンプ
+                break;
+            case SCENE_TITLE:
+            case SCENE_GAMEOVER:
+            case SCENE_CLEAR:
+            case SCENE_CREDITS:
+                if (Controller::IsDown(kPadButton10)) keys[DIK_RETURN] = 1; // A: 決定
+                break;
+            default:
+                break;
+            }
+
+            if (Controller::IsDown(kPadButton11)) keys[DIK_LSHIFT] = 1; // B: ダッシュ
+            if (Controller::IsDown(kPadButton12)) keys[DIK_H] = 1; // X: 剣
+            if (Controller::IsDown(kPadButton13)) keys[DIK_J] = 1; // Y: パリィ
+            if (Controller::IsDown(kPadButton8)) keys[DIK_J] = 1; // LB: パリィ
+            if (Controller::IsDown(kPadButton9)) keys[DIK_LSHIFT] = 1; // RB: ダッシュ
+            if (Controller::IsDown(kPadButton4)) keys[DIK_RETURN] = 1; // START: 決定
+            if (Controller::IsDown(kPadButton5)) keys[DIK_ESCAPE] = 1; // BACK: 終了
+        }
 
         // 更新処理と描画処理の両方から参照するため、このスコープで宣言する。
         bool justWindow = false;
@@ -318,6 +644,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 if (titleSelection == 0) {
                     ResetBossBattle(player, boss, bullets);
                     counterEffect = {};
+                    counterText = {};
                     counterCooldown = 0;
                     bossFlash = 0;
                     hitStopTimer = 0;
@@ -332,6 +659,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     dashRequest = false;
                     jumpRequest = false;
                     dashTimer = 0;
+                    dashDodgeEffect = 0;
                     dashCooldown = 0;
                     dashDirX = dashDirY = 0.0f;
                     dashWave = {};
@@ -345,6 +673,14 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     swordHitFlashTimer = 0;
                     counterWindowTimer = 0;
                     counterArmed = false;
+                    breath = {};
+                    charge = {};
+                    wire = {};
+                    wireWait = 0;
+                    nextAttackWait = kAttackWaitMin;
+                    lastAttack = -1;
+                    attackInProgress = false;
+                    wireEscapeEffect = 0;
                     currentScene = SCENE_BOSS;
                 }
                 else currentScene = SCENE_CREDITS;
@@ -353,21 +689,395 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
         else if (currentScene == SCENE_BOSS) {
             // 演出はヒットストップ・スロー中も実時間で進める
             if (dashCooldown > 0) --dashCooldown;
+            if (dashDodgeEffect > 0) --dashDodgeEffect;
             if (dashWave.timer > 0) --dashWave.timer;
             for (int i = 0; i < kDashAfterimageCount; ++i) {
                 if (dashImages[i].timer > 0) --dashImages[i].timer;
             }
             if (counterCooldown > 0) --counterCooldown;
             if (counterEffect.timer > 0) --counterEffect.timer;
+            if (counterText.timer > 0) --counterText.timer;
             if (bossFlash > 0) --bossFlash;
             if (swordHitFlashTimer > 0) --swordHitFlashTimer;
             if (shakeTimer > 0) --shakeTimer;
             if (specialFlashTimer > 0) --specialFlashTimer;
             if (specialImpactTimer > 0) --specialImpactTimer;
-            // Jを押した瞬間に剣を振り、クールダウン中でなければジャスト判定を開始する。
-            // 長押しガードは廃止。押しっぱなしでも判定は再発生しない。
+            if (wireEscapeEffect > 0) --wireEscapeEffect;
+            if (wire.flashTimer > 0) --wire.flashTimer;
+            if (charge.hitFlash > 0) --charge.hitFlash;
+            if (charge.dustTimer > 0) --charge.dustTimer;
+            if (charge.downHitFlash > 0) --charge.downHitFlash;
+
+            // 攻撃が完全に終わるまで次の攻撃を選ばない。
+            // 反射された通常弾も消えるまで待つので攻撃が重ならない。
+            bool bulletRemaining = false;
+            for (int i = 0; i < kMaxBullets; ++i) {
+                if (bullets[i].active) { bulletRemaining = true; break; }
+            }
+            const bool bossBusy = wire.phase != WIRE_IDLE ||
+                breath.phase != BREATH_IDLE || charge.phase != CHARGE_IDLE || bulletRemaining;
+            if (bossBusy) {
+                attackInProgress = true;
+            }
+            else if (attackInProgress) {
+                attackInProgress = false;
+                nextAttackWait = kAttackWaitMin + rand() % kAttackWaitRandom;
+            }
+            else if (nextAttackWait > 0) {
+                --nextAttackWait;
+            }
+            else {
+                // 直前と同じ攻撃は選ばない。4種類をランダムに切り替える。
+                int choice = rand() % 4;
+                if (choice == lastAttack) choice = (choice + 1 + rand() % 3) % 4;
+                lastAttack = choice;
+                attackInProgress = true;
+                if (choice == 3) {
+                    // 毎回ランダムな角度で左画面外から突進する（約-18～+18度）。
+                    // プレイヤーの予告開始時の位置を通る軌道に固定する。
+                    charge = {};
+                    charge.phase = CHARGE_WARNING;
+                    const float degrees = (float)(rand() % 37 - 18);
+                    charge.angle = degrees * 3.14159265f / 180.0f;
+                    charge.vx = cosf(charge.angle) * kChargeSpeed;
+                    charge.vy = sinf(charge.angle) * kChargeSpeed;
+                    charge.targetY = player.y + 24.0f;
+                    charge.x = -(kChargeWidth + 30.0f);
+                    // プレイヤーのX位置で指定した高さになるよう、開始位置を逆算。
+                    charge.y = charge.targetY - kChargeHeight * 0.5f
+                        - (player.x + 18.0f - charge.x) * (charge.vy / charge.vx);
+                }
+                else if (choice == 1) {
+                    wire.phase = WIRE_WARNING;
+                    wire.timer = 0;
+                    // 予告開始時のプレイヤーの真下を出現地点として固定する。
+                    wire.groundX = player.x + 18.0f;
+                    wire.groundY = kGroundY + 16.0f;
+                    wire.targetX = player.x + 18.0f;
+                    wire.targetY = player.y + 24.0f;
+                }
+                else if (choice == 2) {
+                    breath.phase = BREATH_WARNING;
+                    breath.timer = 0;
+                    breath.startX = boss.x + kDragonMouthOffsetX;
+                    breath.startY = boss.y + kDragonMouthY;
+                    float dx = player.x + 18.0f - breath.startX;
+                    float dy = player.y + 24.0f - breath.startY;
+                    float dist = sqrtf(dx * dx + dy * dy);
+                    if (dist < 0.001f) dist = 1.0f;
+                    breath.dirX = dx / dist;
+                    breath.dirY = dy / dist;
+                    breath.length = 0.0f;
+                }
+                else {
+                    // 通常弾はここで1発だけ生成する。
+                    for (int i = 0; i < kMaxBullets; ++i) {
+                        if (!bullets[i].active) {
+                            float sx = boss.x;
+                            float sy = boss.y + kBossWireOffsetY;
+                            float dx = player.x + 18.0f - sx;
+                            float dy = player.y + 24.0f - sy;
+                            float len = sqrtf(dx * dx + dy * dy);
+                            if (len < 0.001f) len = 1.0f;
+                            bullets[i] = { sx, sy, dx / len * 7.0f,
+                                dy / len * 7.0f, true, false };
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 龍の画面外突進。実フレーム更新で予告時間を安定させる。
+            if (charge.phase == CHARGE_WARNING) {
+                if (++charge.timer >= kChargeWarningFrames) {
+                    charge.phase = CHARGE_LEAVE;
+                    charge.timer = 0;
+                }
+            }
+            else if (charge.phase == CHARGE_LEAVE) {
+                if (++charge.timer >= kChargeLeaveFrames) {
+                    charge.phase = CHARGE_RUSH;
+                    charge.timer = 0;
+                    charge.x = -(kChargeWidth + 30.0f);
+                    // 開始位置は予告時に決めた斜めの軌道を維持する。
+                }
+            }
+            else if (charge.phase == CHARGE_RUSH) {
+                ++charge.timer;
+                const float previousX = charge.x;
+                const float previousY = charge.y;
+                charge.x += charge.vx;
+                charge.y += charge.vy;
+                // 斜め移動でも高速すり抜けを防ぐため4分割で判定する。
+                bool chargeHit = false;
+                for (int step = 1; step <= 4; ++step) {
+                    float t = (float)step / 4.0f;
+                    float hitX = previousX + charge.vx * t;
+                    float hitY = previousY + charge.vy * t;
+                    if (IsHit(player.x, player.y, 36.0f, 48.0f,
+                        hitX, hitY, kChargeWidth, kChargeHeight)) {
+                        chargeHit = true;
+                        break;
+                    }
+                }
+                if (!charge.hitOnce && chargeHit) {
+                    charge.hitOnce = true;
+                    // 突進へのジャストパリィはダッシュ回避より優先する。
+                    // Jを押してからの受付時間内、または接触した瞬間のJで成功。
+                    if ((counterArmed && counterWindowTimer > 0) ||
+                        (keys[DIK_J] && !preKeys[DIK_J] && counterCooldown == 0)) {
+                        charge.phase = CHARGE_FALL;
+                        charge.timer = 0;
+                        charge.fallVelocityY = -9.0f; // 一度上に弾かれてから墜落
+                        charge.fallSpin = charge.angle;
+                        charge.hitFlash = 18;
+                        counterEffect = { player.x + 18.0f, player.y + 24.0f, 30, true };
+                        StartCounterText(counterText, COUNTER_TEXT_BREAK,
+                            player.x + 18.0f, player.y - 48.0f);
+                        hitStopTimer = kDashCounterHitStopFrames;
+                        slowTimer = kDashCounterSlowFrames;
+                        shakeTotalFrames = kDashCounterShakeFrames;
+                        shakeMaxPower = kDashCounterShakePower;
+                        shakeTimer = shakeTotalFrames;
+                        gameFrameAccumulator = 0.0f;
+                        counterArmed = false;
+                        counterWindowTimer = 0;
+                        counterCooldown = kCounterRetryCooldown;
+                        swordSwingTimer = kSwordSwingFrames;
+                        swordRequest = false;
+                        normalSwordActive = false;
+                    }
+                    else if (dashTimer > 0) {
+                        dashDodgeEffect = 20;
+                    }
+                    else {
+                        // 他の攻撃と同様、テスト中は死亡させず被弾演出のみ。
+                        charge.hitFlash = 20;
+                    }
+                }
+                if (charge.x > kWidth + 30.0f || charge.y > kHeight + kChargeHeight + 100.0f ||
+                    charge.y < -kChargeHeight - 350.0f) {
+                    charge.phase = CHARGE_RECOVERY;
+                    charge.timer = 0;
+                }
+            }
+            else if (charge.phase == CHARGE_FALL) {
+                // パリィされた龍は勢いを失い、回転しながら地面へ落ちる。
+                ++charge.timer;
+                charge.fallVelocityY += kChargeFallGravity;
+                charge.y += charge.fallVelocityY;
+                charge.x += charge.vx * 0.12f; // 慣性で少しだけ前進
+                charge.fallSpin += 0.13f;
+                if (charge.x > kWidth - kChargeWidth) charge.x = kWidth - kChargeWidth;
+                if (charge.x < 0.0f) charge.x = 0.0f;
+                if (charge.y >= kGroundY - kChargeHeight) {
+                    charge.y = kGroundY - kChargeHeight;
+                    charge.phase = CHARGE_DOWN;
+                    charge.timer = 0;
+                    charge.fallVelocityY = 0.0f;
+                    charge.fallSpin = 0.0f;
+                    charge.dustTimer = 36;
+                    shakeTotalFrames = 20;
+                    shakeMaxPower = 19.0f;
+                    shakeTimer = 20;
+                }
+            }
+            else if (charge.phase == CHARGE_DOWN) {
+                // ダウン中は他の攻撃を出さず、240実フレーム追撃可能。
+                if (++charge.timer >= kChargeDownFrames) {
+                    charge.phase = CHARGE_GETUP;
+                    charge.timer = 0;
+                }
+            }
+            else if (charge.phase == CHARGE_GETUP) {
+                // 起き上がりの間も新しい攻撃を禁止。
+                if (++charge.timer >= kChargeGetupFrames) {
+                    charge.phase = CHARGE_RECOVERY;
+                    charge.timer = 0;
+                }
+            }
+            else if (charge.phase == CHARGE_RECOVERY) {
+                if (++charge.timer >= kChargeRecoveryFrames) {
+                    charge.phase = CHARGE_IDLE;
+                    charge.timer = 0;
+                }
+            }
+
+            // 龍ブレスは予告開始時のプレイヤー位置に向けて照準を固定する。
+            // 発射後にプレイヤーを追尾しないため、ジャンプや空中ダッシュで回避できる。
+            if (breath.hitFlash > 0) --breath.hitFlash;
+            if (breath.hitCooldown > 0) --breath.hitCooldown;
+            if (breath.phase == BREATH_WARNING) {
+                if (++breath.timer >= kBreathWarningFrames) {
+                    breath.phase = BREATH_EXTEND;
+                    breath.timer = 0;
+                }
+            }
+            else if (breath.phase == BREATH_EXTEND) {
+                ++breath.timer;
+                float progress = (float)breath.timer / (float)kBreathExtendFrames;
+                if (progress > 1.0f) progress = 1.0f;
+                breath.length = 1600.0f * progress;
+                if (breath.timer >= kBreathExtendFrames) {
+                    breath.phase = BREATH_HOLD;
+                    breath.timer = 0;
+                    breath.length = 1600.0f;
+                }
+            }
+            else if (breath.phase == BREATH_HOLD) {
+                if (++breath.timer >= kBreathHoldFrames) {
+                    breath.phase = BREATH_RECOVERY;
+                    breath.timer = 0;
+                }
+            }
+            else if (breath.phase == BREATH_RECOVERY) {
+                if (++breath.timer >= kBreathRecoveryFrames) {
+                    breath.phase = BREATH_IDLE;
+                    breath.timer = 0;
+                }
+            }
+            // 当たり判定：プレイヤー中心とブレス線分の最短距離で判定。
+            // 元の無敵テスト仕様に合わせて、ヒット演出だけを表示する。
+            if ((breath.phase == BREATH_EXTEND || breath.phase == BREATH_HOLD) &&
+                breath.hitCooldown == 0 && breath.length > 0.0f) {
+                float px = player.x + 18.0f - breath.startX;
+                float py = player.y + 24.0f - breath.startY;
+                float along = px * breath.dirX + py * breath.dirY;
+                if (along < 0.0f) along = 0.0f;
+                if (along > breath.length) along = breath.length;
+                float nearX = breath.startX + breath.dirX * along;
+                float nearY = breath.startY + breath.dirY * along;
+                float diffX = player.x + 18.0f - nearX;
+                float diffY = player.y + 24.0f - nearY;
+                const float hitRadius = kBreathRadius + 22.0f;
+                if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius && dashTimer > 0) {
+                    dashDodgeEffect = 20; // ブレスをダッシュで回避
+                    breath.hitCooldown = 12;
+                }
+                else if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius) {
+                    breath.hitFlash = 14;
+                    breath.hitCooldown = 45;
+                }
+            }
+
             const bool justPressedJ = keys[DIK_J] && !preKeys[DIK_J];
-            if (justPressedJ) {
+            // しっぽは演出中も実フレームで進める（カウンター入力を見逃さない）。
+            // 発射方向は予告終了時のプレイヤー中心に固定する。
+            if (wire.phase == WIRE_WARNING) {
+                if (++wire.timer >= kWireWarningFrames) {
+                    wire.phase = WIRE_FLYING;
+                    wire.timer = 0;
+                    // 龍のしっぽは地面から出て、予告終了時のプレイヤー位置へ伸びる。
+                    wire.x = wire.groundX;
+                    wire.y = wire.groundY;
+                    wire.targetX = player.x + 18.0f;
+                    wire.targetY = player.y + 24.0f;
+                    float dx = wire.targetX - wire.x;
+                    float dy = wire.targetY - wire.y;
+                    float len = sqrtf(dx * dx + dy * dy);
+                    if (len < 0.001f) len = 1.0f;
+                    wire.vx = dx / len * kWireSpeed;
+                    wire.vy = dy / len * kWireSpeed;
+                }
+            }
+            else if (wire.phase == WIRE_FLYING) {
+                ++wire.timer;
+                // 高速ワイヤーのすり抜け防止：移動線分を小刻みに判定。
+                bool caught = false;
+                for (int step = 0; step < 4; ++step) {
+                    wire.x += wire.vx * 0.25f;
+                    wire.y += wire.vy * 0.25f;
+                    if (IsHit(player.x, player.y, 36.0f, 48.0f,
+                        wire.x - 7.0f, wire.y - 7.0f, 14.0f, 14.0f)) {
+                        caught = true;
+                        break;
+                    }
+                }
+                if (caught && ((counterArmed && counterWindowTimer > 0) ||
+                    (justPressedJ && counterCooldown == 0))) {
+                    // 掴まれる直前のカウンター成功：拘束させずにしっぽを弾く。
+                    wire.phase = WIRE_RECOVERY;
+                    wire.timer = 0;
+                    wire.flashTimer = 16;
+                    wireEscapeEffect = 30;
+                    wire.escaped = true;
+                    swordSwingTimer = kSwordSwingFrames;
+                    swordRequest = false;
+                    normalSwordActive = false;
+                    counterArmed = false;
+                    counterWindowTimer = 0;
+                    counterCooldown = kCounterRetryCooldown;
+                    counterEffect = { wire.x, wire.y, 30, true };
+                    StartCounterText(counterText, COUNTER_TEXT_BREAK, player.x + 18.0f, player.y - 48.0f);
+                    hitStopTimer = 5;
+                    slowTimer = 18;
+                    shakeTotalFrames = kDashCounterShakeFrames;
+                    shakeMaxPower = kDashCounterShakePower;
+                    shakeTimer = shakeTotalFrames;
+                    gameFrameAccumulator = 0.0f;
+                }
+                else if (caught && dashTimer > 0) {
+                    // ダッシュ中はしっぽを回避、拘束されない。
+                    dashDodgeEffect = 20;
+                    wire.phase = WIRE_RECOVERY;
+                    wire.timer = 0;
+                    wire.flashTimer = 12;
+                }
+                else if (caught) {
+                    wire.phase = WIRE_BOUND;
+                    wire.timer = 0;
+                    wire.x = player.x + 18.0f;
+                    wire.y = player.y + 24.0f;
+                    player.velocityY = 0.0f;
+                    dashTimer = 0;
+                    dashRequest = false;
+                    jumpRequest = false;
+                    swordRequest = false;
+                    counterArmed = false;
+                    counterWindowTimer = 0;
+                }
+                else if (wire.timer > 90 || wire.x < -40 || wire.x > kWidth + 40 ||
+                    wire.y < -40 || wire.y > kHeight + 40) {
+                    wire.phase = WIRE_RECOVERY;
+                    wire.timer = 0;
+                }
+            }
+            else if (wire.phase == WIRE_BOUND) {
+                ++wire.timer;
+                // しっぽが地面へ引きずり込む。画面と地面からはみ出さない。
+                float tx = wire.groundX - 18.0f;
+                float ty = kGroundY - 48.0f;
+                float dx = tx - (player.x + 18.0f);
+                float dy = ty - (player.y + 24.0f);
+                float len = sqrtf(dx * dx + dy * dy);
+                if (len > 0.001f) {
+                    float speed = len < 4.0f ? len : 4.0f;
+                    player.x += dx / len * speed;
+                    player.y += dy / len * speed;
+                }
+                if (player.x < 0.0f) player.x = 0.0f;
+                if (player.x > kWidth - 36.0f) player.x = kWidth - 36.0f;
+                if (player.y < 0.0f) player.y = 0.0f;
+                if (player.y > kGroundY - 48.0f) player.y = kGroundY - 48.0f;
+                wire.x = player.x + 18.0f;
+                wire.y = player.y + 24.0f;
+                player.velocityY = 0.0f;
+                player.onGround = (player.y >= kGroundY - 48.0f);
+                if (wire.timer >= kWireMaxBoundFrames) {
+                    wire.phase = WIRE_RECOVERY;
+                    wire.timer = 0;
+                }
+            }
+            else if (wire.phase == WIRE_RECOVERY) {
+                if (++wire.timer >= 35) {
+                    wire.phase = WIRE_IDLE;
+                    wire.timer = 0;
+                }
+            }
+            // Jで剣を振り、短いカウンター受付を開始する。
+            // しっぽが触れる直前に押すと、拘束される前に切断できる。
+            // 捕まった後はJで脱出できない（今回は接触時カウンター方式）。
+            if (justPressedJ && wire.phase != WIRE_BOUND && wireEscapeEffect == 0) {
                 swordRequest = true;
                 normalSwordRequest = false;
                 if (counterCooldown == 0) {
@@ -376,7 +1086,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     counterCooldown = kCounterRetryCooldown;
                 }
             }
-            justWindow = counterArmed && counterWindowTimer > 0;
+            justWindow = wire.phase != WIRE_BOUND && counterArmed && counterWindowTimer > 0;
             // ヒットストップ中は判定時間を減らさない。
             if (hitStopTimer == 0 && counterWindowTimer > 0) {
                 --counterWindowTimer;
@@ -397,9 +1107,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             if (keys[DIK_LSHIFT] && !preKeys[DIK_LSHIFT]) dashRequest = true;
             if (!keys[DIK_LSHIFT]) dashRequest = false;
             // SPACEを押した瞬間にジャンプ予約（スロー・ヒットストップ中の入力抜け対策）。
-            if (keys[DIK_SPACE] && !preKeys[DIK_SPACE]) jumpRequest = true;
+            if (wire.phase != WIRE_BOUND && keys[DIK_SPACE] && !preKeys[DIK_SPACE]) jumpRequest = true;
             // Hを押した瞬間に剣を振る。ヒットストップ中の入力も予約する。
-            if (keys[DIK_H] && !preKeys[DIK_H]) {
+            if (wire.phase != WIRE_BOUND && keys[DIK_H] && !preKeys[DIK_H]) {
                 swordRequest = true;
                 normalSwordRequest = true;
             }
@@ -410,7 +1120,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 updateGame = true;
             }
 
-            if (updateGame) {
+            if (updateGame && wire.phase != WIRE_BOUND) {
                 if (swordSwingTimer > 0) --swordSwingTimer;
                 if (swordSwingTimer == 0) normalSwordActive = false;
                 if (swordRequest) {
@@ -499,32 +1209,28 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     float hitX = player.direction == 1
                         ? player.x + 18.0f : player.x + 18.0f - kSwordHitWidth;
                     float hitY = player.y + 24.0f - kSwordHitHeight * 0.5f;
-                    if (IsHit(hitX, hitY, kSwordHitWidth, kSwordHitHeight,
-                        boss.x, boss.y, 100.0f, 120.0f)) {
+                    // ダウン中の龍は、画面右端の通常ボスではなく落下した位置で判定。
+                    const bool hitDownDragon = charge.phase == CHARGE_DOWN &&
+                        IsHit(hitX, hitY, kSwordHitWidth, kSwordHitHeight,
+                            charge.x, charge.y, kChargeWidth, kChargeHeight);
+                    const bool hitStandingDragon = charge.phase != CHARGE_LEAVE &&
+                        charge.phase != CHARGE_RUSH && charge.phase != CHARGE_FALL &&
+                        charge.phase != CHARGE_DOWN && charge.phase != CHARGE_GETUP &&
+                        IsHit(hitX, hitY, kSwordHitWidth, kSwordHitHeight,
+                            boss.x, boss.y, kBossWidth, kBossHeight);
+                    if (hitDownDragon || hitStandingDragon) {
+                        if (hitDownDragon) {
+                            charge.downHitFlash = 12;
+                            counterEffect = { charge.x + kChargeWidth * 0.5f,
+                                charge.y + kChargeHeight * 0.5f, 30, false };
+                        }
                         swordHitBoss = true;
                         swordHitFlashTimer = 12;
                         bossFlash = 12; // 試作用：命中するとボスが白く光る
                     }
                 }
 
-                // ボスが約3秒に1回、プレイヤーの方向に弾を撃つ
-                ++boss.shotTimer;
-                if (boss.shotTimer >= kShotInterval) {
-                    boss.shotTimer = 0;
-                    for (int i = 0; i < kMaxBullets; ++i) {
-                        if (!bullets[i].active) {
-                            float startX = boss.x;
-                            float startY = boss.y + 48.0f;
-                            float dx = player.x + 18.0f - startX;
-                            float dy = player.y + 24.0f - startY;
-                            float length = sqrtf(dx * dx + dy * dy);
-                            if (length < 0.001f) length = 1.0f;
-                            bullets[i] = { startX, startY,
-                                dx / length * 7.0f, dy / length * 7.0f, true, false };
-                            break;
-                        }
-                    }
-                }
+                // 通常弾の発射は共通スケジューラで管理する（重複発射しない）。
                 // 弾の移動とプレイヤーへの当たり判定
                 for (int i = 0; i < kMaxBullets; ++i) {
                     Bullet& b = bullets[i];
@@ -549,6 +1255,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                             // Shiftキーではなく「実際にダッシュしているか」で判定する。
                             const bool dashJustCounter = dashTimer > 0;
                             counterEffect = { b.x, b.y, 30, dashJustCounter };
+                            StartCounterText(counterText,
+                                dashJustCounter ? COUNTER_TEXT_PERFECT : COUNTER_TEXT_PARRY,
+                                player.x + 18.0f, player.y - 48.0f);
                             shakeTotalFrames = dashJustCounter ? kDashCounterShakeFrames : kCounterShakeFrames;
                             shakeMaxPower = dashJustCounter ? kDashCounterShakePower : kCounterShakePower;
                             shakeTimer = shakeTotalFrames;
@@ -557,8 +1266,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                             if (dashJustCounter) specialFlashTimer = kDashCounterFlashFrames;
                             gameFrameAccumulator = 0.0f;
                             counterCooldown = kCounterRetryCooldown;
-                            float toBossX = boss.x + 50.0f - b.x;
-                            float toBossY = boss.y + 60.0f - b.y;
+                            float toBossX = boss.x + kBossWidth * 0.5f - b.x;
+                            float toBossY = boss.y + kBossWireOffsetY - b.y;
                             float length = sqrtf(toBossX * toBossX + toBossY * toBossY);
                             if (length < 0.001f) length = 1.0f;
                             const float reflectedSpeed = dashJustCounter ? kDashCounterBulletSpeed : kCounterBulletSpeed;
@@ -580,7 +1289,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         b.active = false;
                         continue;
                     }
-                    if (b.reflected && IsHit(boss.x, boss.y, 100, 120,
+                    if (b.reflected && IsHit(boss.x, boss.y, kBossWidth, kBossHeight,
                         b.x - 8, b.y - 8, 16, 16)) {
                         b.active = false;
                         bossFlash = 12; // ボスに命中したら白く点滅
@@ -592,6 +1301,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         continue;
                     }
                     if (!b.reflected && IsHit(player.x, player.y, 36, 48, b.x - 8, b.y - 8, 16, 16)) {
+                        if (dashTimer > 0) {
+                            dashDodgeEffect = 20;
+                            b.active = false;
+                            continue;
+                        }
                         b.active = false;
                         // テスト中はガードしていなくても死亡しない
                         // 弾だけ消してボス戦を続行する
@@ -628,19 +1342,51 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             shakeY = (int)(cosf(step * 3.1f + 0.4f) * power);
         }
 
+        // 龍がブレスを放っている間は、ダッシュジャストカウンターと同じ
+        // 最大20pxの強い画面シェイクを持続させる。
+        // 予告中・攻撃終了後は揺らさず、当たり判定の座標も変更しない。
+        if (currentScene == SCENE_BOSS &&
+            (breath.phase == BREATH_EXTEND || breath.phase == BREATH_HOLD)) {
+            const float breathShakePower = kDashCounterShakePower;
+            const float tick = (float)breath.timer;
+            const int breathShakeX = (int)(sinf(tick * 2.4f + 0.7f) * breathShakePower);
+            const int breathShakeY = (int)(cosf(tick * 3.1f + 0.4f) * breathShakePower);
+            // 他のカウンター演出中はそのシェイクを優先する。
+            if (shakeTimer <= 0) {
+                shakeX = breathShakeX;
+                shakeY = breathShakeY;
+            }
+        }
+
+        // 突進中は小さく揺らす（カウンターのシェイクを優先）。
+        if (currentScene == SCENE_BOSS && charge.phase == CHARGE_RUSH && shakeTimer <= 0) {
+            shakeX = (int)(sinf((float)charge.timer * 2.4f) * 7.0f);
+            shakeY = (int)(cosf((float)charge.timer * 3.0f) * 5.0f);
+        }
+
         // 全シーン共通の単色背景を描画する
         DrawBackground();
+
+        // ボスの待機アニメーションを毎フレーム進める。
+        // 攻撃中の処理や当たり判定とは独立した描画用タイマー。
+        if (currentScene == SCENE_BOSS) {
+            ++bossIdleTimer;
+            if (bossIdleTimer >= kBossIdleFrameDuration) {
+                bossIdleTimer = 0;
+                bossIdleFrame = (bossIdleFrame + 1) % kBossIdleFrameCount;
+            }
+        }
 
         // 現在のシーンに応じた画面を描画する
         switch (currentScene) {
         case SCENE_TITLE:
-            Novice::ScreenPrintf(608, 190, "TITLE");
-            DrawMenuButton(480, 290, "GAME START", titleSelection == 0);
-            DrawMenuButton(480, 380, "CREDITS", titleSelection == 1);
-            Novice::ScreenPrintf(490, 500, "W / S : SELECT    ENTER : OK");
+            Novice::ScreenPrintf(928, 330, "TITLE");
+            DrawMenuButton(800, 430, "GAME START", titleSelection == 0);
+            DrawMenuButton(800, 520, "CREDITS", titleSelection == 1);
+            Novice::ScreenPrintf(810, 640, "W / S : SELECT    ENTER : OK");
             break;
         case SCENE_BOSS:
-            Novice::ScreenPrintf(550, 60, "BOSS BATTLE");
+            Novice::ScreenPrintf(870, 60, "BOSS BATTLE");
             // ジャンプ用の地面を描画する。
             Novice::DrawBox(0, (int)kGroundY + shakeY, kWidth, 4, 0.0f, 0x53627CFF, kFillModeSolid);
             // ダッシュ残像：古いものほど薄く消える
@@ -670,26 +1416,167 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         0.0f, WithAlpha(0xFFFFFFFFu, 140 - elapsed * 35), kFillModeWireFrame);
                 }
             }
-            // プレイヤー（青い矩形）
-            Novice::DrawBox((int)player.x + shakeX, (int)player.y + shakeY, 36, 48,
-                0.0f, 0x66BFFFFF, kFillModeSolid);
-            // プレイヤーの前側に剣を描画（左右反転・ダッシュ追従・画面シェイク対応）
-            DrawSword(player, swordSwingTimer, shakeX, shakeY);
-            // 通常攻撃の判定をデバッグ表示（当たり判定と見た目の調整用）
-            if (normalSwordActive && swordSwingTimer <= kSwordHitStart &&
-                swordSwingTimer >= kSwordHitEnd) {
-                float hitX = player.direction == 1
-                    ? player.x + 18.0f : player.x + 18.0f - kSwordHitWidth;
-                float hitY = player.y + 24.0f - kSwordHitHeight * 0.5f;
-                Novice::DrawBox((int)hitX + shakeX, (int)hitY + shakeY,
-                    (int)kSwordHitWidth, (int)kSwordHitHeight, 0.0f,
-                    0x66EFFFFFu, kFillModeWireFrame);
+            //////////////////////////////////////////////////////////////////////
+            //////////////////////////////////////////////////////////////////////////
+            ////bossの描画↓
+            // 奥側のレイヤー：ボス本体を先に描画する。
+            // 突進の移動・落下・ダウン・起き上がり中以外は待機アニメーションを表示。
+            if (charge.phase != CHARGE_LEAVE && charge.phase != CHARGE_RUSH &&
+                charge.phase != CHARGE_FALL && charge.phase != CHARGE_DOWN &&
+                charge.phase != CHARGE_GETUP) {
+                // 7680x1080の横長画像から1920x1080を切り出す。
+                // 0, 1920, 3840, 5760 の順で表示してループする。
+                // ※ 0.25fでは480px幅になるため、1920px表示には1.0fを使う。
+                if (bossIdleTexture >= 0) {
+                    Novice::DrawSpriteRect(
+                        1490, 0,
+                        bossIdleFrame * kBossIdleFrameWidth, 0,
+                        kBossIdleFrameWidth, kBossIdleFrameHeight,
+                        bossIdleTexture,
+                        0.25f, 1.0f, 0.0f, 0xFFFFFFFFu); // 切り出した1920x1080を等倍描画
+                }
+                else {
+                    // 読み込みに失敗した場合は確認用の矩形を表示する。
+                    Novice::DrawBox((int)boss.x + shakeX, (int)boss.y + shakeY,
+                        (int)kBossWidth, (int)kBossHeight, 0.0f,
+                        0xE15B65FFu, kFillModeSolid);
+                }
             }
-            // ボス（赤い矩形）
-            Novice::DrawBox((int)boss.x + shakeX, (int)boss.y + shakeY, 100, 120,
-                0.0f, bossFlash > 0 ? 0xFFFFFFFFu : 0xE15B65FF, kFillModeSolid);
+            if (bossIdleTexture < 0) {
+                Novice::ScreenPrintf(20, 300,
+                    "ERROR: Resources/ryu.png NOT FOUND");
+            }
+            // 突進中の龍はボスの代わりに横長のシルエットとして画面を横断する。
+            if (charge.phase == CHARGE_WARNING || charge.phase == CHARGE_LEAVE) {
+                // 突進方向と一致する斜めの予告帯。
+                float slope = charge.vy / charge.vx;
+                float startCenterY = charge.y + kChargeHeight * 0.5f;
+                float yLeft = startCenterY + (0.0f - charge.x) * slope;
+                float yRight = startCenterY + ((float)kWidth - charge.x) * slope;
+                int pulse = charge.timer % 16;
+                for (int offset = -1; offset <= 1; ++offset) {
+                    int lineOffset = offset * (int)(kChargeHeight * 0.5f);
+                    Novice::DrawLine(0, (int)yLeft + lineOffset + shakeY,
+                        kWidth, (int)yRight + lineOffset + shakeY,
+                        offset == 0 ? WithAlpha(0xFF454500u, 80 + pulse * 5) : 0xFFAB67FFu);
+                }
+                Novice::ScreenPrintf(500, 110, "DRAGON CHARGE WARNING!");
+            }
+            if (charge.phase == CHARGE_RUSH) {
+                int cx = (int)charge.x + shakeX;
+                int cy = (int)charge.y + shakeY;
+                // 速度感のある残像（少数の矩形で2000描画制限に配慮）。
+                for (int i = 3; i >= 1; --i) {
+                    Novice::DrawBox(cx - (int)(charge.vx / kChargeSpeed * i * 40.0f),
+                        cy + 12 - (int)(charge.vy / kChargeSpeed * i * 40.0f),
+                        (int)kChargeWidth, (int)kChargeHeight - 24,
+                        charge.angle, WithAlpha(0xB84C4C00u, 55 - i * 12), kFillModeSolid);
+                }
+                Novice::DrawBox(cx, cy, (int)kChargeWidth, (int)kChargeHeight,
+                    charge.angle, 0xAD3D4EFFu, kFillModeSolid);
+                Novice::DrawBox(cx + 12, cy + 14, (int)kChargeWidth - 24, (int)kChargeHeight - 28,
+                    charge.angle, 0xED7780FFu, kFillModeSolid);
+                // 進行方向（右）へ突き出た角と目。
+                Novice::DrawLine(cx + (int)kChargeWidth - 30, cy + 18,
+                    cx + (int)kChargeWidth + 25, cy - 12, 0xFFE3B5FFu);
+                Novice::DrawEllipse(cx + (int)kChargeWidth - 34, cy + 37,
+                    7, 7, 0.0f, 0xFFF29AFFu, kFillModeSolid);
+            }
+            // パリィ後の龍：回転落下 → 地面で240Fダウン → 起き上がり。
+            if (charge.phase == CHARGE_FALL || charge.phase == CHARGE_DOWN ||
+                charge.phase == CHARGE_GETUP) {
+                const int cx = (int)charge.x + shakeX;
+                const int cy = (int)charge.y + shakeY;
+                float rotation = charge.phase == CHARGE_FALL ? charge.fallSpin : 0.0f;
+                if (charge.phase == CHARGE_GETUP) {
+                    // 起き上がるにつれて龍の姿が上へ持ち上がる。
+                    rotation = 0.06f * sinf((float)charge.timer * 0.35f);
+                }
+                unsigned int dragonColor = (charge.downHitFlash > 0 || charge.hitFlash > 0)
+                    ? 0xFFFFFFFFu : 0xAD3D4EFFu;
+                Novice::DrawBox(cx, cy, (int)kChargeWidth, (int)kChargeHeight,
+                    rotation, dragonColor, kFillModeSolid);
+                Novice::DrawBox(cx + 12, cy + 14, (int)kChargeWidth - 24,
+                    (int)kChargeHeight - 28, rotation, 0xED7780FFu, kFillModeSolid);
+                if (charge.phase == CHARGE_DOWN) {
+                    Novice::ScreenPrintf(cx + 65, cy - 28, "DOWN! %d", (kChargeDownFrames - charge.timer + 59) / 60);
+                }
+                // 着地の土煙：最大16個の楕円だけで描画負荷を抑える。
+                if (charge.dustTimer > 0) {
+                    float elapsed = (float)(36 - charge.dustTimer);
+                    for (int i = 0; i < 16; ++i) {
+                        float side = (i % 2 == 0 ? -1.0f : 1.0f);
+                        float px = charge.x + kChargeWidth * 0.5f + side * (20.0f + elapsed * (2.0f + (i % 5)));
+                        float py = kGroundY - 12.0f - sinf((float)i * 1.7f) * 13.0f - elapsed * (0.5f + (i % 3) * 0.3f);
+                        int radius = 7 + i % 6 + (int)(elapsed * 0.3f);
+                        Novice::DrawEllipse((int)px + shakeX, (int)py + shakeY,
+                            radius, radius / 2 + 3, 0.0f,
+                            WithAlpha(0xB6A69A00u, charge.dustTimer * 5), kFillModeSolid);
+                    }
+                }
+            }
+            if (charge.hitFlash > 0)
+                Novice::ScreenPrintf(490, 235, "CHARGE HIT! (TEST INVINCIBLE)");
             if (swordHitFlashTimer > 0)
                 Novice::ScreenPrintf(560, 190, "SWORD HIT!");
+
+            // 龍のしっぽ：予告中は地面が赤く光り、飛翔中は地面から太い尾が伸びる。
+            if (wire.phase == WIRE_WARNING) {
+                int gx = (int)wire.groundX + shakeX;
+                int gy = (int)kGroundY + shakeY;
+                int pulse = (wire.timer % 12) * 2;
+                Novice::DrawEllipse(gx, gy, 30 + pulse, 10 + pulse / 3,
+                    0.0f, WithAlpha(0xFF5544FFu, 140), kFillModeSolid);
+                Novice::DrawEllipse(gx, gy, 40 + pulse, 16 + pulse / 3,
+                    0.0f, 0xFFAA55FFu, kFillModeWireFrame);
+                Novice::ScreenPrintf(540, 125, "TAIL WARNING!");
+            }
+            if (wire.phase == WIRE_FLYING || wire.phase == WIRE_BOUND) {
+                int ax = (int)wire.groundX + shakeX;
+                int ay = (int)wire.groundY + shakeY;
+                int wx = (int)wire.x + shakeX;
+                int wy = (int)wire.y + shakeY;
+                // 太い尾を重ね描きして龍のしっぽらしい厚みを出す。
+                for (int offset = -9; offset <= 9; offset += 3) {
+                    Novice::DrawLine(ax + offset, ay, wx + offset / 2, wy, 0x853D42FFu);
+                }
+                Novice::DrawLine(ax, ay, wx, wy, 0xE68D72FFu);
+                Novice::DrawEllipse(wx, wy, 11, 11, 0.0f, 0xF4B09AFFu, kFillModeSolid);
+                Novice::DrawEllipse(ax, ay, 24, 9, 0.0f, 0x9A4848FFu, kFillModeSolid);
+            }
+            if (wire.phase == WIRE_BOUND) {
+                // 捕まった後はカウンター不可。ワイヤーの接触前にJを押す。
+                int cx = (int)player.x + 18 + shakeX;
+                int cy = (int)player.y + 24 + shakeY;
+                int r = 38;
+                Novice::DrawEllipse(cx, cy, r, r, 0.0f,
+                    0xFF6060FFu, kFillModeWireFrame);
+                Novice::ScreenPrintf(470, 135, "BOUND! COUNTER BEFORE CONTACT NEXT TIME");
+                Novice::ScreenPrintf(500, 160, "TAIL TIMER: %d", wire.timer);
+            }
+            if (wireEscapeEffect > 0) {
+                int cx = (int)player.x + 18 + shakeX;
+                int cy = (int)player.y + 24 + shakeY;
+                int elapsed = 30 - wireEscapeEffect;
+                int radius = 20 + elapsed * 9;
+                Novice::DrawEllipse(cx, cy, radius, radius, 0.0f,
+                    WithAlpha(0x9CEFFFFFu, wireEscapeEffect * 8), kFillModeWireFrame);
+                Novice::ScreenPrintf(530, 200, "TAIL JUST COUNTER!");
+            }
+            // 龍のブレス：予告時は口元に炎を集め、発射中はうねる炎・火の粉・着弾炎を描画。
+            // 見た目だけを変更。DragonBreathの長さ、方向、当たり判定には触れない。
+            DrawDragonFireBreath(breath, shakeX, shakeY);
+            if (breath.hitFlash > 0) {
+                Novice::ScreenPrintf(475, 215, "BREATH HIT! (TEST INVINCIBLE)");
+            }
+
+            if (dashDodgeEffect > 0) {
+                Novice::ScreenPrintf(520, 240, "DASH DODGE!");
+                Novice::DrawEllipse((int)player.x + 18 + shakeX,
+                    (int)player.y + 24 + shakeY, 40, 48, 0.0f,
+                    WithAlpha(0x78EFFFFFu, dashDodgeEffect * 11), kFillModeWireFrame);
+            }
+
             // 反射弾の残像を弾本体より先に描く（青い光の軌跡）。
             // 新しい残像ほど大きく明るく、古い残像ほど小さく透明にする。
             for (int i = 0; i < kMaxBullets; ++i) {
@@ -735,6 +1622,22 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     Novice::DrawLine(cx, cy - len, cx, cy + len, WithAlpha(0xFFFFFFFFu, alpha));
                 }
             }
+            // 最前面のキャラクターレイヤー：ボス・しっぽ・ブレス・弾より後に描画する。
+            // プレイヤー（青い矩形）
+            Novice::DrawBox((int)player.x + shakeX, (int)player.y + shakeY, 36, 48,
+                0.0f, 0x66BFFFFF, kFillModeSolid);
+            // プレイヤーの前側に剣を描画（左右反転・ダッシュ追従・画面シェイク対応）
+            DrawSword(player, swordSwingTimer, shakeX, shakeY);
+            // 通常攻撃の判定をデバッグ表示（当たり判定と見た目の調整用）
+            if (normalSwordActive && swordSwingTimer <= kSwordHitStart &&
+                swordSwingTimer >= kSwordHitEnd) {
+                float hitX = player.direction == 1
+                    ? player.x + 18.0f : player.x + 18.0f - kSwordHitWidth;
+                float hitY = player.y + 24.0f - kSwordHitHeight * 0.5f;
+                Novice::DrawBox((int)hitX + shakeX, (int)hitY + shakeY,
+                    (int)kSwordHitWidth, (int)kSwordHitHeight, 0.0f,
+                    0x66EFFFFFu, kFillModeWireFrame);
+            }
             // 全画面フラッシュは最前面。徐々に透明にして視界を戻す。
             if (specialFlashTimer > 0) {
                 int alpha = 165 * specialFlashTimer / kDashCounterFlashFrames;
@@ -745,29 +1648,42 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             Novice::ScreenPrintf(30, 55, "J PRESS : 8F COUNTER WINDOW  |  ENTER : TEST CLEAR");
             if (justWindow) Novice::ScreenPrintf(30, 105, "JUST COUNTER WINDOW");
             Novice::ScreenPrintf(30, 155, "AIR DASH: HOLD W (UP) / S (DOWN) + SHIFT");
+            Novice::ScreenPrintf(30, 180, "WIRE: PRESS J WHEN THE RING TURNS BLUE!");
+            Novice::ScreenPrintf(30, 205, "DASH: INVINCIBLE VS BREATH / WIRE / BULLETS");
             if (dashCooldown > 0) Novice::ScreenPrintf(30, 130, "DASH COOLDOWN: %d", dashCooldown);
             else Novice::ScreenPrintf(30, 130, "DASH READY");
             if (counterEffect.timer > 0 && counterEffect.enhanced)
                 Novice::ScreenPrintf(475, 100, "DASH JUST COUNTER!");
+            // カウンター文字は画面演出・プレイヤーより前面に描画する。
+            DrawCounterText(counterText, parryTexture, perfectTexture, breakTexture);
             if (hitStopTimer > 0) Novice::ScreenPrintf(30, 80, "HIT STOP");
             else if (slowTimer > 0) Novice::ScreenPrintf(30, 80, "SLOW MOTION 25%%");
             break;
         case SCENE_GAMEOVER:
-            Novice::ScreenPrintf(540, 330, "GAME OVER");
+            Novice::ScreenPrintf(860, 510, "GAME OVER");
             break;
         case SCENE_CLEAR:
-            Novice::ScreenPrintf(540, 330, "GAME CLEAR");
+            Novice::ScreenPrintf(860, 510, "GAME CLEAR");
             break;
         case SCENE_CREDITS:
-            Novice::ScreenPrintf(590, 220, "CREDITS");
+            Novice::ScreenPrintf(910, 400, "CREDITS");
             // ここに制作者名・素材提供元
-            Novice::ScreenPrintf(490, 350, "Created by: (your name)");
-            Novice::ScreenPrintf(480, 470, "Press ENTER to return to TITLE");
+            Novice::ScreenPrintf(810, 530, "Created by: (your name)");
+            Novice::ScreenPrintf(800, 650, "Press ENTER to return to TITLE");
             break;
         }
         if (currentScene == SCENE_GAMEOVER || currentScene == SCENE_CLEAR) {
-            Novice::ScreenPrintf(490, 390, "Press ENTER to change scene");
+            Novice::ScreenPrintf(810, 590, "Press ENTER to change scene");
         }
+
+        // ===== コントローラー入力デバッグ（全シーン共通） =====
+        // 全シーンの描画後に表示し、背景に隠れないようにする。
+        Novice::ScreenPrintf(20, 20, "DEBUG TEST");
+        Novice::ScreenPrintf(20, 50, "Controller: %d", Controller::IsConnected() ? 1 : 0);
+        Novice::ScreenPrintf(20, 80, "A Down: %d", Controller::IsDown(kPadButton10) ? 1 : 0);
+        Novice::ScreenPrintf(20, 110, "A Pressed: %d", Controller::IsPressed(kPadButton10) ? 1 : 0);
+        Novice::ScreenPrintf(20, 140, "Scene: %d", (int)currentScene);
+        Novice::ScreenPrintf(20, 170, "Enter Key: %d", keys[DIK_RETURN] != 0);
 
         /// ↑描画処理ここまで
         ///
