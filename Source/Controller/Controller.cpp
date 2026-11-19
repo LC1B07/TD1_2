@@ -30,6 +30,18 @@ namespace Controller {
     int rightX = 0;
     int rightY = 0;
 
+    // スティックの現在の状態
+    bool currentLeftStickLeft = false;
+    bool currentLeftStickRight = false;
+    bool currentLeftStickUp = false;
+    bool currentLeftStickDown = false;
+
+    // スティックの前回の状態
+    bool previousLeftStickLeft = false;
+    bool previousLeftStickRight = false;
+    bool previousLeftStickUp = false;
+    bool previousLeftStickDown = false;
+
     // 初期化
     void Initialize() {
 
@@ -67,6 +79,18 @@ namespace Controller {
         Novice::GetAnalogInputRight(
             kJoystickNo, &rightX, &rightY
         );
+
+        // 前回のスティック状態を保存
+        previousLeftStickLeft = currentLeftStickLeft;
+        previousLeftStickRight = currentLeftStickRight;
+        previousLeftStickUp = currentLeftStickUp;
+        previousLeftStickDown = currentLeftStickDown;
+
+        // 現在のスティック状態を取得
+        currentLeftStickLeft = leftX < -16384;
+        currentLeftStickRight = leftX > 16384;
+        currentLeftStickUp = leftY > 16384;
+        currentLeftStickDown = leftY < -16384;
 
         // ボタン状態取得
         for (int i = 0; i < kButtonCount; i++) {
@@ -106,6 +130,26 @@ namespace Controller {
 
         return currentButtons[index] &&
             !previousButtons[index];
+    }
+
+    // 左スティックを左に倒した瞬間
+    bool IsLeftStickLeftPressed() {
+        return currentLeftStickLeft && !previousLeftStickLeft;
+    }
+
+    // 左スティックを右に倒した瞬間
+    bool IsLeftStickRightPressed() {
+        return currentLeftStickRight && !previousLeftStickRight;
+    }
+
+    // 左スティックを上に倒した瞬間
+    bool IsLeftStickUpPressed() {
+        return currentLeftStickUp && !previousLeftStickUp;
+    }
+
+    // 左スティックを下に倒した瞬間
+    bool IsLeftStickDownPressed() {
+        return currentLeftStickDown && !previousLeftStickDown;
     }
 
     // 離した瞬間か

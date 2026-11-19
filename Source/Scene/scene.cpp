@@ -107,20 +107,33 @@ void UpdateTitleScene(
     // 左キー（A）
     bool left = false;
 
-    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0 || Controller::IsPressed(Controller::Button::kPadButton2)) {
+    if (
+        (preKeys[DIK_A] == 0 && keys[DIK_A] != 0) ||
+        Controller::IsPressed(Controller::Button::kPadButton2) ||
+        Controller::IsLeftStickLeftPressed() ||
+        Controller::IsPressed(Controller::Button::kPadButton8)
+        ) {
         left = true;
     }
 
     // 右キー（D）
     bool right = false;
 
-    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0 || Controller::IsPressed(Controller::Button::kPadButton3)) {
+    if (
+        (preKeys[DIK_D] == 0 && keys[DIK_D] != 0) ||
+        Controller::IsPressed(Controller::Button::kPadButton3) ||
+        Controller::IsLeftStickRightPressed() ||
+        Controller::IsPressed(Controller::Button::kPadButton9)
+        ) {
         right = true;
     }
 
     bool enter = false;
 
-    if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0 || Controller::IsPressed(Controller::Button::kPadButton10)) {
+    if (
+        preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0 || 
+        Controller::IsPressed(Controller::Button::kPadButton10)
+        ) {
         enter = true;
     }
 

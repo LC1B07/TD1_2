@@ -25,4 +25,9 @@ namespace Controller {
 
     float GetRightStickX();
     float GetRightStickY();
+
+    bool IsLeftStickLeftPressed();
+    bool IsLeftStickRightPressed();
+    bool IsLeftStickUpPressed();
+    bool IsLeftStickDownPressed();
 }

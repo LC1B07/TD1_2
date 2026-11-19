@@ -96,6 +96,44 @@ int WINAPI WinMain(
             "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
         );
 
+        // シーン番号を表示
+        ImGui::Text("SCENE : %d", currentScene);
+
+        // コントローラー接続状態
+        ImGui::Text("Pad Connected : %d", Controller::IsConnected());
+
+		// 矢印キーの状態
+		ImGui::Text("Pad Button0 : %d", Controller::IsDown(Controller::Button::kPadButton0));  // 上ボタン
+		ImGui::Text("Pad Button3 : %d", Controller::IsDown(Controller::Button::kPadButton3));  // 右ボタン
+		ImGui::Text("Pad Button1 : %d", Controller::IsDown(Controller::Button::kPadButton1));  // 下ボタン
+		ImGui::Text("Pad Button2 : %d", Controller::IsDown(Controller::Button::kPadButton2));  // 左ボタン
+
+		// ボタンの状態
+        ImGui::Text("Pad Button10 : %d", Controller::IsDown(Controller::Button::kPadButton10));  // Aボタン
+        ImGui::Text("Pad Button11 : %d", Controller::IsDown(Controller::Button::kPadButton11));  // Bボタン
+        ImGui::Text("Pad Button12 : %d", Controller::IsDown(Controller::Button::kPadButton12));  // Xボタン
+        ImGui::Text("Pad Button13 : %d", Controller::IsDown(Controller::Button::kPadButton13));  // Yボタン
+
+        // L1 ボタンの状態
+        ImGui::Text("Pad Button8 : %d", Controller::IsDown(Controller::Button::kPadButton8));  // L1ボタン
+
+        // R1 ボタンの状態
+        ImGui::Text("Pad Button9 : %d", Controller::IsDown(Controller::Button::kPadButton9));  // R1ボタン
+
+        // L2 ボタンの状態
+        ImGui::Text("Pad Button14 : %d", Controller::IsDown(Controller::Button::kPadButton14));  // L2ボタン
+
+        // L2 ボタンの状態
+        ImGui::Text("Pad Button15 : %d", Controller::IsDown(Controller::Button::kPadButton15));  // L2ボタン
+
+        // 左スティック
+        ImGui::Text("Left Stick X : %.2f", Controller::GetLeftStickX());
+        ImGui::Text("Left Stick Y : %.2f", Controller::GetLeftStickY());
+
+        // 右スティック
+        ImGui::Text("Right Stick X : %.2f", Controller::GetRightStickX());
+        ImGui::Text("Right Stick Y : %.2f", Controller::GetRightStickY());
+
         ImGui::End();
 
         DrawBackground();
@@ -206,41 +244,6 @@ int WINAPI WinMain(
             state.shakeY =
                 (int)(cosf(step * 3.1f + 0.4f) * power);
         }
-
-        Novice::ScreenPrintf(
-            10,
-            10,
-            "SCENE : %d",
-            currentScene
-        );
-
-        Novice::ScreenPrintf(
-            10,
-            30,
-            "Pad Button2 : %d",
-            Controller::IsDown(Controller::Button::kPadButton2)
-        );
-
-        Novice::ScreenPrintf(
-            10,
-            50,
-            "Pad Button3 : %d",
-            Controller::IsDown(Controller::Button::kPadButton3)
-        );
-
-        Novice::ScreenPrintf(
-            10,
-            70,
-            "Pad Button10 ( A ) : %d",
-            Controller::IsDown(Controller::Button::kPadButton10)
-        );
-
-        Novice::ScreenPrintf(
-            10,
-            90,
-            "Pad Connected : %d",
-            Controller::IsConnected()
-        );
 
         Novice::EndFrame();
 
