@@ -1,4 +1,6 @@
-#include "Controller.h"
+#include <Novice.h>
+
+#include "../Controller/Controller.h"
 
 namespace Controller {
     // Novice入力のみを使用するため、XInputによる振動は無効化。
