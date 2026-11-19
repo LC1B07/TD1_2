@@ -191,6 +191,7 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
     <ClCompile Include="Source\Boss\BossTutorial\BossTutorial.cpp" />
     <ClCompile Include="Source\Bullet\bullet.cpp" />
     <ClCompile Include="C:\KamataEngine\Adapter\Novice.cpp" />
+    <ClCompile Include="Source\Controller\Controller.cpp" />
     <ClCompile Include="Source\Effect\effect.cpp" />
     <ClCompile Include="Source\FullScreen\fullScreen.cpp" />
     <ClCompile Include="Source\Game\game.cpp" />
@@ -230,6 +231,7 @@ copy "$(WindowsSdkDir)bin\$(TargetPlatformVersion)\x64\dxil.dll" "$(TargetDir)dx
     <ClInclude Include="C:\KamataEngine\DirectXGame\input\Input.h" />
     <ClInclude Include="C:\KamataEngine\DirectXGame\scene\GameScene.h" />
     <ClInclude Include="C:\KamataEngine\Adapter\Novice.h" />
+    <ClInclude Include="Source\Controller\Controller.h" />
     <ClInclude Include="Source\Effect\effect.h" />
     <ClInclude Include="Source\FullScreen\fullScreen.h" />
     <ClInclude Include="Source\Game\game.h" />
