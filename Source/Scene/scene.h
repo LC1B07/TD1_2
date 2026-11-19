@@ -23,3 +23,8 @@ void DrawCreditsScene();
 
 // メニューボタン描画
 void DrawMenuButton(int x, int y, const char* label, bool selected);
+
+// BossA/Bの選択を管理（タイトルのPLAY、チュートリアルから遷移）。
+void UpdateBossSelectScene(Scene& currentScene, int& bossSelection, const char keys[], const char preKeys[]);
+void DrawBossSelectScene(int bossSelection);
+void DrawBgmScene();

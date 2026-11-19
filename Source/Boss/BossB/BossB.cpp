@@ -1,4 +1,4 @@
-#include "bossB.h"
+#include "BossB.h"
 
 // BossBは別担当者向けのひな形。竜の行動・攻撃は未実装。
 namespace BossB {
