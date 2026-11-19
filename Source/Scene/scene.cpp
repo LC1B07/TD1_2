@@ -14,6 +14,10 @@ void DrawMenuButton(
     bool selected
 ) {
 
+    // ボタンのサイズ
+    const int buttonWidth = 350;
+    const int buttonHeight = 80;
+
     unsigned int fill =
         selected ? 0x293D59FF : 0x1D2536FF;
 
@@ -23,7 +27,7 @@ void DrawMenuButton(
     // 影
     Novice::DrawBox(
         x + 5, y + 7,
-        320, 64,
+        buttonWidth, buttonHeight,
         0.0f,
         WithAlpha(0x00000000u, 100),
         kFillModeSolid
@@ -32,7 +36,7 @@ void DrawMenuButton(
     // ボタン本体
     Novice::DrawBox(
         x, y,
-        320, 64,
+        buttonWidth, buttonHeight,
         0.0f,
         fill,
         kFillModeSolid
@@ -43,7 +47,7 @@ void DrawMenuButton(
 
         Novice::DrawBox(
             x + 3, y + 3,
-            314, 9,
+            buttonWidth - 6, 10,
             0.0f,
             WithAlpha(0x8BCBFF00u, 75),
             kFillModeSolid
@@ -53,7 +57,7 @@ void DrawMenuButton(
     // 枠線
     Novice::DrawBox(
         x, y,
-        320, 64,
+        buttonWidth, buttonHeight,
         0.0f,
         edge,
         kFillModeWireFrame
@@ -61,13 +65,17 @@ void DrawMenuButton(
 
     // 文字
     Novice::ScreenPrintf(
-        x + 95, y + 23,
+        x + 95, y + 32,
         "%s",
         label
     );
 
+    // 選択マーク
     if (selected) {
-        Novice::ScreenPrintf(x + 25, y + 23, ">");
+        Novice::ScreenPrintf(
+            x + 25, y + 32,
+            ">"
+        );
     }
 }
 
@@ -95,35 +103,69 @@ void UpdateTitleScene(
     const char preKeys[]
 ) {
 
-    bool up = false;
-    if (preKeys[DIK_W] == 0 && keys[DIK_W] != 0) {
-        up = true;
+    // 左キー（A）
+    bool left = false;
+
+    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0) {
+        left = true;
     }
 
-    bool down = false;
-    if (preKeys[DIK_S] == 0 && keys[DIK_S] != 0) {
-        down = true;
+    // 右キー（D）
+    bool right = false;
+
+    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0) {
+        right = true;
     }
 
     bool enter = false;
+
     if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0) {
         enter = true;
     }
 
-    if (up || down) {
-        titleSelection = 1 - titleSelection;
+    // 左に移動
+    if (left) {
+
+        titleSelection--;
+
+        // 一番左から左に移動したら一番右へ
+        if (titleSelection < 0) {
+            titleSelection = 3;
+        }
+    }
+
+    // 右に移動
+    if (right) {
+
+        titleSelection++;
+
+        // 一番右から右に移動したら一番左へ
+        if (titleSelection > 3) {
+            titleSelection = 0;
+        }
     }
 
     if (enter) {
 
-        if (titleSelection == 0) {
+        switch (titleSelection) {
 
+        case 0:
             ResetGameState(state);
+            currentScene = SCENE_TUTORIAL;
+            break;
 
-            currentScene = SCENE_BOSS_A;
-        } else {
+        case 1:
+            currentScene = SCENE_BOSS_SELECT;
+            break;
 
+        case 2:
+            currentScene = SCENE_BGM;
+            break;
+
+        case 3:
+            DrawCreditsScene();
             currentScene = SCENE_CREDITS;
+            break;
         }
     }
 }
@@ -280,23 +322,35 @@ void UpdateOtherScene(
 // タイトル描画
 void DrawTitleScene(int titleSelection) {
 
-    Novice::ScreenPrintf(608, 190, "TITLE");
+    Novice::ScreenPrintf(960, 540, "TITLE");
 
     DrawMenuButton(
-        480, 290,
-        "ゲームを始める",
+        100, 780,
+        "TUTORIAL",
         titleSelection == 0
     );
 
     DrawMenuButton(
-        480, 380,
-        "CREDITS",
+        530, 780,
+        "PLAY",
         titleSelection == 1
     );
 
+    DrawMenuButton(
+        960, 780,
+        "BGM",
+        titleSelection == 2
+    );
+
+    DrawMenuButton(
+        1460, 780,
+        "CREDIT",
+        titleSelection == 3
+    );
+
     Novice::ScreenPrintf(
-        490, 500,
-        "W / S : 選択    ENTER : 決定"
+        380, 980,
+        "A / D : SELECT    ENTER : GO"
     );
 }
 
@@ -669,3 +723,4 @@ void DrawCreditsScene() {
         "ENTER を 押して タイトル に 戻る"
     );
 }
+

@@ -204,6 +204,13 @@ int WINAPI WinMain(
                 (int)(cosf(step * 3.1f + 0.4f) * power);
         }
 
+        Novice::ScreenPrintf(
+            10,
+            10,
+            "SCENE : %d",
+            currentScene
+        );
+
         Novice::EndFrame();
 
         // ESCキー
