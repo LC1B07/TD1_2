@@ -90,7 +90,7 @@ int WINAPI WinMain(
         ImGui::Begin("Debug");
        
         ImGui::Combo(
-            "BlendMode",
+            "currentScene",
             reinterpret_cast<int*>(&currentScene),
             "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
         );
