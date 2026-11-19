@@ -10,6 +10,11 @@
 #include "Source/Scene/scene.h"
 #include "Source/FullScreen/fullScreen.h"
 
+// 開発補助用　GUI
+#ifdef USE_IMGUI     // #ifdef USE_IMGUI と #endif　で囲う
+#include <imgui.h>  
+#endif
+
 const char kWindowTitle[] = "TD1_2";
 
 // Windowsアプリのエントリーポイント
@@ -77,6 +82,21 @@ int WINAPI WinMain(
         // 更新処理
         // --------------------------------
 
+        // ウィンドウの初期サイズを設定 
+        // ImGuiCond_FirstUseEver == 初回だけサイズを指定
+        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_FirstUseEver);
+
+        // ImGui::Begin("Debug"); と ImGui::End();　で挟むことで、ImGuiのウィンドウを作成することができる
+        ImGui::Begin("Debug");
+       
+        ImGui::Combo(
+            "BlendMode",
+            reinterpret_cast<int*>(&currentScene),
+            "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
+        );
+
+        ImGui::End();
+
         DrawBackground();
 
         switch (currentScene) {
@@ -95,11 +115,39 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_BOSS:
+		case SCENE_BGM:
+
+            break;
+
+		case SCENE_CREDITS:
+
+            UpdateOtherScene(
+                keys,
+                preKeys
+            );
+
+            DrawCreditsScene();
+
+            break;
+
+        case SCENE_TUTORIAL:
 
             UpdateBossScene(
                 state,
-                currentScene,
+                keys,
+                preKeys
+            );
+
+            break;
+
+        case SCENE_BOSS_SELECT:
+
+            break;
+
+        case SCENE_BOSS_A:
+
+            UpdateBossScene(
+                state,
                 keys,
                 preKeys
             );
@@ -108,9 +156,7 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_GAMEOVER:
-
-            DrawGameOverScene();
+        case SCENE_BOSS_B:
 
             break;
 
@@ -120,16 +166,9 @@ int WINAPI WinMain(
 
             break;
 
-        case SCENE_CREDITS:
+        case SCENE_GAMEOVER:
 
-            UpdateOtherScene(
-                currentScene,
-                titleSelection,
-                keys,
-                preKeys
-            );
-
-            DrawCreditsScene();
+            DrawGameOverScene();
 
             break;
 
@@ -145,7 +184,7 @@ int WINAPI WinMain(
         state.shakeY = 0;
 
         if (
-            currentScene == SCENE_BOSS &&
+            currentScene == SCENE_BOSS_A &&
             state.shakeTimer > 0
             ) {
 

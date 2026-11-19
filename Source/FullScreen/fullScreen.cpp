@@ -1,4 +1,4 @@
-#include "fullScreen.h"
+#include "../FullScreen/fullScreen.h"
 
 // フルスクリーンとウィンドウ表示を切り替える関数
 void ToggleFullScreen(

@@ -1,4 +1,5 @@
-#include "boss.h"
+
+#include "../Boss/boss.h"
 #include <cmath>
 
 // ボスの攻撃
