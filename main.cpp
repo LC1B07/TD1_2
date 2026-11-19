@@ -102,8 +102,6 @@ int WINAPI WinMain(
 		case SCENE_CREDITS:
 
             UpdateOtherScene(
-                currentScene,
-                titleSelection,
                 keys,
                 preKeys
             );
@@ -123,8 +121,6 @@ int WINAPI WinMain(
         case SCENE_BOSS_A:
 
             UpdateBossScene(
-                state,
-                currentScene,
                 keys,
                 preKeys
             );
