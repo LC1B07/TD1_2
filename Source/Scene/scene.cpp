@@ -95,17 +95,20 @@ void UpdateTitleScene(
     const char preKeys[]
 ) {
 
-    bool up =
-        preKeys[DIK_W] == 0 &&
-        keys[DIK_W] != 0;
+    bool up = false;
+    if (preKeys[DIK_W] == 0 && keys[DIK_W] != 0) {
+        up = true;
+    }
 
-    bool down =
-        preKeys[DIK_S] == 0 &&
-        keys[DIK_S] != 0;
+    bool down = false;
+    if (preKeys[DIK_S] == 0 && keys[DIK_S] != 0) {
+        down = true;
+    }
 
-    bool enter =
-        preKeys[DIK_RETURN] == 0 &&
-        keys[DIK_RETURN] != 0;
+    bool enter = false;
+    if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0) {
+        enter = true;
+    }
 
     if (up || down) {
         titleSelection = 1 - titleSelection;
@@ -128,7 +131,6 @@ void UpdateTitleScene(
 // ボス戦更新
 void UpdateBossScene(
     GameState& state,
-    Scene& currentScene,
     const char keys[],
     const char preKeys[]
 ) {
@@ -137,8 +139,11 @@ void UpdateBossScene(
     UpdateEffectTimers(state);
 
     // Jキー
-    const bool justPressedJ =
-        keys[DIK_J] && !preKeys[DIK_J];
+    bool justPressedJ = false;
+
+    if (keys[DIK_J] != 0 && preKeys[DIK_J] == 0) {
+        justPressedJ = true;
+    }
 
     if (justPressedJ) {
 
@@ -187,21 +192,39 @@ void UpdateBossScene(
     }
 
     // ダッシュ入力
-    if (keys[DIK_LSHIFT] && !preKeys[DIK_LSHIFT]) {
+    bool dashPressed = false;
+
+    if (keys[DIK_LSHIFT] != 0 && preKeys[DIK_LSHIFT] == 0) {
+        dashPressed = true;
+    }
+
+    if (dashPressed) {
         state.dashRequest = true;
     }
 
-    if (!keys[DIK_LSHIFT]) {
+    if (keys[DIK_LSHIFT] == 0) {
         state.dashRequest = false;
     }
 
     // ジャンプ入力
-    if (keys[DIK_SPACE] && !preKeys[DIK_SPACE]) {
+    bool jumpPressed = false;
+
+    if (keys[DIK_SPACE] != 0 && preKeys[DIK_SPACE] == 0) {
+        jumpPressed = true;
+    }
+
+    if (jumpPressed) {
         state.jumpRequest = true;
     }
 
     // Hキー通常攻撃
-    if (keys[DIK_H] && !preKeys[DIK_H]) {
+    bool swordPressed = false;
+
+    if (keys[DIK_H] != 0 && preKeys[DIK_H] == 0) {
+        swordPressed = true;
+    }
+
+    if (swordPressed) {
 
         state.swordRequest = true;
         state.normalSwordRequest = true;
@@ -235,50 +258,22 @@ void UpdateBossScene(
         UpdateBullets(state);
     }
 
-    // テスト用クリア
-    if (
-        keys[DIK_RETURN] &&
-        !preKeys[DIK_RETURN]
-        ) {
-        currentScene = SCENE_CLEAR;
-    }
 }
 
 // その他のシーン更新
 void UpdateOtherScene(
-    Scene& currentScene,
-    int& titleSelection,
     const char keys[],
     const char preKeys[]
 ) {
 
-    bool enter =
-        preKeys[DIK_RETURN] == 0 &&
-        keys[DIK_RETURN] != 0;
+    bool enter = false;
 
-    if (!enter) {
-        return;
+    if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0) {
+        enter = true;
     }
 
-    switch (currentScene) {
-
-    case SCENE_GAMEOVER:
-        currentScene = SCENE_TITLE;
-        titleSelection = 0;
-        break;
-
-    case SCENE_CLEAR:
-        currentScene = SCENE_TITLE;
-        titleSelection = 0;
-        break;
-
-    case SCENE_CREDITS:
-        currentScene = SCENE_TITLE;
-        titleSelection = 1;
-        break;
-
-    default:
-        break;
+    if (enter == false) {
+        return;
     }
 }
 

@@ -14,16 +14,12 @@ void UpdateTitleScene(
 
 // ボス戦更新
 void UpdateBossScene(
-    GameState& state,
-    Scene& currentScene,
     const char keys[],
     const char preKeys[]
 );
 
 // その他のシーン更新
 void UpdateOtherScene(
-    Scene& currentScene,
-    int& titleSelection,
     const char keys[],
     const char preKeys[]
 );

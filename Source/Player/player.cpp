@@ -4,7 +4,8 @@
 // プレイヤー更新
 void UpdatePlayer(
     GameState& state,
-    const char keys[]
+    const char keys[],
+    const char preKeys[]
 ) {
 
     Player& player = state.player;
@@ -34,11 +35,13 @@ void UpdatePlayer(
     // 移動入力
     float moveX = 0.0f;
 
-    if (keys[DIK_A]) {
+    // Aキーを押した瞬間
+    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0) {
         moveX -= 1.0f;
     }
 
-    if (keys[DIK_D]) {
+    // Dキーを押した瞬間
+    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0) {
         moveX += 1.0f;
     }
 
@@ -64,19 +67,21 @@ void UpdatePlayer(
         state.dashRequest &&
         state.dashCooldown == 0 &&
         state.dashTimer == 0
-        ) {
+    ) {
 
         float inputDashX = moveX;
         float inputDashY = 0.0f;
 
         // 空中ダッシュ
-        if (!player.onGround) {
+        if (player.onGround == false) {
 
-            if (keys[DIK_W]) {
+            // Wキーを押した瞬間
+            if (preKeys[DIK_W] == 0 && keys[DIK_W] != 0) {
                 inputDashY -= 1.0f;
             }
 
-            if (keys[DIK_S]) {
+            // Sキーを押した瞬間
+            if (preKeys[DIK_S] == 0 && keys[DIK_S] != 0) {
                 inputDashY += 1.0f;
             }
         }
@@ -103,7 +108,7 @@ void UpdatePlayer(
             kDashWaveFrames
         };
 
-        if (!player.onGround) {
+        if (player.onGround == false) {
             player.velocityY = 0.0f;
         }
     }
@@ -184,12 +189,17 @@ void CheckSwordHitBoss(GameState& state) {
         return;
     }
 
-    const bool swordHitActive =
+    bool swordHitActive = false;
+
+    if (
         state.normalSwordActive &&
         state.swordSwingTimer <= kSwordHitStart &&
-        state.swordSwingTimer >= kSwordHitEnd;
+        state.swordSwingTimer >= kSwordHitEnd
+    ) {
+        swordHitActive = true;
+    }
 
-    if (!swordHitActive) {
+    if (swordHitActive == false) {
         return;
     }
 
@@ -230,20 +240,33 @@ void DrawSword(
     const float cy =
         player.y + 24.0f + shakeY;
 
-    const bool swinging = swingTimer > 0;
+    bool swinging = false;
 
-    const float progress = swinging
-        ? (float)(kSwordSwingFrames - swingTimer) /
-        (float)kSwordSwingFrames
-        : 0.0f;
+    if (swingTimer > 0) {
+        swinging = true;
+    }
 
-    const float baseAngle = swinging
-        ? (-pi * 0.75f + progress * pi)
-        : (-pi * 0.22f);
+    float progress = 0.0f;
 
-    const float angle = player.direction == 1
-        ? baseAngle
-        : pi - baseAngle;
+    if (swinging) {
+        progress =
+            (float)(kSwordSwingFrames - swingTimer) /
+            (float)kSwordSwingFrames;
+    }
+
+    float baseAngle = -pi * 0.22f;
+
+    if (swinging) {
+        baseAngle = -pi * 0.75f + progress * pi;
+    }
+
+    float angle = 0.0f;
+
+    if (player.direction == 1) {
+        angle = baseAngle;
+    } else {
+        angle = pi - baseAngle;
+    }
 
     // 剣の残像
     if (swinging) {
@@ -258,9 +281,13 @@ void DrawSword(
 
             float oldBase = -pi * 0.75f + oldProgress * pi;
 
-            float oldAngle = player.direction == 1
-                ? oldBase
-                : pi - oldBase;
+            float oldAngle = 0.0f;
+
+            if (player.direction == 1) {
+                oldAngle = oldBase;
+            } else {
+                oldAngle = pi - oldBase;
+            }
 
             float ex = cx + cosf(oldAngle) * kSwordLength;
             float ey = cy + sinf(oldAngle) * kSwordLength;
