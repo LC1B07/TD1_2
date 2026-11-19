@@ -1,7 +1,7 @@
-#include "../Controller/Controller.h"
+ï»¿#include "../Controller/Controller.h"
 
 namespace Controller {
-    // Novice“ü—Í‚Ì‚İ‚ğg—p‚·‚é‚½‚ßAXInput‚É‚æ‚éU“®‚Í–³Œø‰»B
+    // Noviceå…¥åŠ›ã®ã¿ã‚’ä½¿ç”¨ã™ã‚‹ãŸã‚ã€XInputã«ã‚ˆã‚‹æŒ¯å‹•ã¯ç„¡åŠ¹åŒ–ã€‚
     void SetVibration(unsigned short left, unsigned short right) {
         (void)left;
         (void)right;
@@ -10,46 +10,46 @@ namespace Controller {
     void StopVibration() {
     }
 
-    // ƒRƒ“ƒgƒ[ƒ‰[”Ô†
+    // ã‚³ãƒ³ãƒˆãƒ­ãƒ¼ãƒ©ãƒ¼ç•ªå·
     const int kJoystickNo = 0;
 
-    // ƒ{ƒ^ƒ“”
+    // ãƒœã‚¿ãƒ³æ•°
     const int kButtonCount = 16;
 
-    // Ú‘±ó‘Ô
+    // æ¥ç¶šçŠ¶æ…‹
     bool isConnected = false;
 
-    // ƒ{ƒ^ƒ“ó‘Ô
+    // ãƒœã‚¿ãƒ³çŠ¶æ…‹
     bool currentButtons[kButtonCount] = {};
     bool previousButtons[kButtonCount] = {};
 
-    // ƒXƒeƒBƒbƒN“ü—Í
+    // ã‚¹ãƒ†ã‚£ãƒƒã‚¯å…¥åŠ›
     int leftX = 0;
     int leftY = 0;
 
     int rightX = 0;
     int rightY = 0;
 
-    // ‰Šú‰»
+    // åˆæœŸåŒ–
     void Initialize() {
 
         Novice::SetJoystickDeadZone(kJoystickNo, 5000, 5000);
     }
 
-    // XV
+    // æ›´æ–°
     void Update() {
 
-        // ‘O‰ñ‚Ìƒ{ƒ^ƒ“ó‘Ô‚ğ•Û‘¶
+        // å‰å›ã®ãƒœã‚¿ãƒ³çŠ¶æ…‹ã‚’ä¿å­˜
         for (int i = 0; i < kButtonCount; i++) {
             previousButtons[i] = currentButtons[i];
             currentButtons[i] = false;
         }
 
-        // Ú‘±Šm”F
+        // æ¥ç¶šç¢ºèª
         isConnected =
             Novice::GetNumberOfJoysticks() > kJoystickNo;
 
-        // Ú‘±‚³‚ê‚Ä‚¢‚È‚¯‚ê‚Î“ü—Í‚ğƒŠƒZƒbƒg
+        // æ¥ç¶šã•ã‚Œã¦ã„ãªã‘ã‚Œã°å…¥åŠ›ã‚’ãƒªã‚»ãƒƒãƒˆ
         if (!isConnected) {
             leftX = 0;
             leftY = 0;
@@ -58,17 +58,17 @@ namespace Controller {
             return;
         }
 
-        // ¶ƒXƒeƒBƒbƒNæ“¾
+        // å·¦ã‚¹ãƒ†ã‚£ãƒƒã‚¯å–å¾—
         Novice::GetAnalogInputLeft(
             kJoystickNo, &leftX, &leftY
         );
 
-        // ‰EƒXƒeƒBƒbƒNæ“¾
+        // å³ã‚¹ãƒ†ã‚£ãƒƒã‚¯å–å¾—
         Novice::GetAnalogInputRight(
             kJoystickNo, &rightX, &rightY
         );
 
-        // ƒ{ƒ^ƒ“ó‘Ôæ“¾
+        // ãƒœã‚¿ãƒ³çŠ¶æ…‹å–å¾—
         for (int i = 0; i < kButtonCount; i++) {
 
             Button button = static_cast<Button>(i);
@@ -78,12 +78,12 @@ namespace Controller {
         }
     }
 
-    // Ú‘±Šm”F
+    // æ¥ç¶šç¢ºèª
     bool IsConnected() {
         return isConnected;
     }
 
-    // ‰Ÿ‚µ‘±‚¯‚Ä‚¢‚é‚©
+    // æŠ¼ã—ç¶šã‘ã¦ã„ã‚‹ã‹
     bool IsDown(Button button) {
 
         int index = static_cast<int>(button);
@@ -95,7 +95,7 @@ namespace Controller {
         return currentButtons[index];
     }
 
-    // ‰Ÿ‚µ‚½uŠÔ‚©
+    // æŠ¼ã—ãŸç¬é–“ã‹
     bool IsPressed(Button button) {
 
         int index = static_cast<int>(button);
@@ -108,7 +108,7 @@ namespace Controller {
             !previousButtons[index];
     }
 
-    // —£‚µ‚½uŠÔ‚©
+    // é›¢ã—ãŸç¬é–“ã‹
     bool IsReleased(Button button) {
 
         int index = static_cast<int>(button);
@@ -121,22 +121,22 @@ namespace Controller {
             previousButtons[index];
     }
 
-    // ¶ƒXƒeƒBƒbƒNX
+    // å·¦ã‚¹ãƒ†ã‚£ãƒƒã‚¯X
     float GetLeftStickX() {
         return (float)leftX / 32768.0f;
     }
 
-    // ¶ƒXƒeƒBƒbƒNY
+    // å·¦ã‚¹ãƒ†ã‚£ãƒƒã‚¯Y
     float GetLeftStickY() {
         return (float)leftY / 32768.0f;
     }
 
-    // ‰EƒXƒeƒBƒbƒNX
+    // å³ã‚¹ãƒ†ã‚£ãƒƒã‚¯X
     float GetRightStickX() {
         return (float)rightX / 32768.0f;
     }
 
-    // ‰EƒXƒeƒBƒbƒNY
+    // å³ã‚¹ãƒ†ã‚£ãƒƒã‚¯Y
     float GetRightStickY() {
         return (float)rightY / 32768.0f;
     }

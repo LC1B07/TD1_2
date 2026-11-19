@@ -5,6 +5,7 @@
 #include "../Boss/boss.h"
 #include "../Bullet/bullet.h"
 #include "../Effect/effect.h"
+#include "../Controller/Controller.h"
 
 // メニューボタン描画
 void DrawMenuButton(
@@ -106,20 +107,20 @@ void UpdateTitleScene(
     // 左キー（A）
     bool left = false;
 
-    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0) {
+    if (preKeys[DIK_A] == 0 && keys[DIK_A] != 0 || Controller::IsPressed(Controller::Button::kPadButton2)) {
         left = true;
     }
 
     // 右キー（D）
     bool right = false;
 
-    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0) {
+    if (preKeys[DIK_D] == 0 && keys[DIK_D] != 0 || Controller::IsPressed(Controller::Button::kPadButton3)) {
         right = true;
     }
 
     bool enter = false;
 
-    if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0) {
+    if (preKeys[DIK_RETURN] == 0 && keys[DIK_RETURN] != 0 || Controller::IsPressed(Controller::Button::kPadButton10)) {
         enter = true;
     }
 

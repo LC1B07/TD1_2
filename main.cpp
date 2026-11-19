@@ -104,6 +104,8 @@ int WINAPI WinMain(
 
         case SCENE_TITLE:
 
+            Controller::Update();
+
             UpdateTitleScene(
                 state,
                 currentScene,
@@ -210,6 +212,34 @@ int WINAPI WinMain(
             10,
             "SCENE : %d",
             currentScene
+        );
+
+        Novice::ScreenPrintf(
+            10,
+            30,
+            "Pad Button2 : %d",
+            Controller::IsDown(Controller::Button::kPadButton2)
+        );
+
+        Novice::ScreenPrintf(
+            10,
+            50,
+            "Pad Button3 : %d",
+            Controller::IsDown(Controller::Button::kPadButton3)
+        );
+
+        Novice::ScreenPrintf(
+            10,
+            70,
+            "Pad Button10 ( A ) : %d",
+            Controller::IsDown(Controller::Button::kPadButton10)
+        );
+
+        Novice::ScreenPrintf(
+            10,
+            90,
+            "Pad Connected : %d",
+            Controller::IsConnected()
         );
 
         Novice::EndFrame();

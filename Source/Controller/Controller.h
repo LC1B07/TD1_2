@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Novice.h>
+#include <xinput.h>
 
 namespace Controller {
 
