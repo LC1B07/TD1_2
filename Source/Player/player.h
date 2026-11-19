@@ -6,7 +6,8 @@
 // プレイヤー更新
 void UpdatePlayer(
     GameState& state,
-    const char keys[]
+    const char keys[],
+    const char preKeys[]
 );
 
 // 剣の攻撃判定

@@ -121,6 +121,7 @@ int WINAPI WinMain(
         case SCENE_BOSS_A:
 
             UpdateBossScene(
+                state,
                 keys,
                 preKeys
             );

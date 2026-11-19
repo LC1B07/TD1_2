@@ -14,6 +14,7 @@ void UpdateTitleScene(
 
 // ボス戦更新
 void UpdateBossScene(
+    GameState& state,
     const char keys[],
     const char preKeys[]
 );
