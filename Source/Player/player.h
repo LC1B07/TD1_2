@@ -4,19 +4,9 @@
 #include "../Game/game.h"
 
 // プレイヤー更新
-void UpdatePlayer(
-    GameState& state,
-    const char keys[],
-    const char preKeys[]
-);
+void UpdatePlayer(GameState& state, const char keys[], const char preKeys[]);
 
-// 剣の攻撃判定
-void CheckSwordHitBoss(GameState& state);
+// ボスごとの剣命中判定は、それぞれのボスモジュールで処理する。
 
 // 剣の描画
-void DrawSword(
-    const Player& player,
-    int swingTimer,
-    int shakeX,
-    int shakeY
-);
+void DrawSword(const Player& player, int swingTimer, int shakeX, int shakeY);

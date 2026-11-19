@@ -1,222 +1,175 @@
-
 #include <Novice.h>
 #include <Windows.h>
+#include <cmath>
+#include <cstring>
 
-#include "Source/Game/game.h"
-#include "Source/Player/player.h"
-#include "Source/Boss/boss.h"
-#include "Source/Bullet/bullet.h"
-#include "Source/Effect/effect.h"
-#include "Source/Scene/scene.h"
+#include "Source/Boss/BossA/bossA.h"
+#include "Source/Boss/BossB/bossB.h"
+#include "Source/Boss/BossTutorial/bossTutorial.h"
 #include "Source/FullScreen/fullScreen.h"
+#include "Source/Game/game.h"
+#include "Source/Scene/scene.h"
 
-// 開発補助用　GUI
-#ifdef USE_IMGUI     // #ifdef USE_IMGUI と #endif　で囲う
-#include <imgui.h>  
-#endif
+const char kWindowTitle[] = "TD1_2 - ONI BOSS";
 
-const char kWindowTitle[] = "TD1_2";
+int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
-// Windowsアプリのエントリーポイント
-int WINAPI WinMain(
-    _In_ HINSTANCE,
-    _In_opt_ HINSTANCE,
-    _In_ LPSTR,
-    _In_ int
-) {
+	Novice::Initialize(kWindowTitle, kWidth, kHeight);
 
-    // 初期化
-    Novice::Initialize(kWindowTitle, kWidth, kHeight);
+	HWND gameWindow = GetActiveWindow();
+	RECT windowRect = {};
+	LONG_PTR windowStyle = 0;
+	bool isFullScreen = false;
 
-    // ウィンドウ情報
-    HWND gameWindow = GetActiveWindow();
+	char keys[256] = {};
+	char preKeys[256] = {};
 
-    RECT windowRect = {};
-    LONG_PTR windowStyle = 0;
+	bool previousLeftDown = false;
+	bool previousRightDown = false;
 
-    bool isFullScreen = false;
+	Scene currentScene = SCENE_TITLE;
 
-    // キー入力
-    char keys[256] = {};
-    char preKeys[256] = {};
+	int titleSelection = 0;
+	GameState state = {};
 
-    // シーン
-    Scene currentScene = SCENE_TITLE;
+	BossA::Reset(state);
+	BossB::State dragonState = {};
+	BossTutorial::State tutorialState = {};
+	BossB::Reset(dragonState);
+	BossTutorial::Reset(tutorialState);
 
-    int titleSelection = 0;
+	while (Novice::ProcessMessage() == 0) {
 
-    // ゲーム状態
-    GameState state = {};
+		Novice::BeginFrame();
+		memcpy(preKeys, keys, sizeof(keys));
 
-    ResetBossBattle(
-        state.player,
-        state.boss,
-        state.bullets
-    );
+		Novice::GetHitKeyStateAll(keys);
 
-    // ゲームループ
-    while (Novice::ProcessMessage() == 0) {
+		// Windowsの左右マウス入力。クリック開始の1フレームだけtrue。
+		// Noviceのウィンドウが操作対象のときに限る。
+		const bool focused = (GetForegroundWindow() == gameWindow);
 
-        Novice::BeginFrame();
+		const bool leftDown = focused && ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0);
 
-        // キー入力
-        memcpy(preKeys, keys, 256);
+		const bool rightDown = focused && ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0);
 
-        Novice::GetHitKeyStateAll(keys);
+		const bool leftPressed = leftDown && !previousLeftDown;
+		const bool rightPressed = rightDown && !previousRightDown;
 
-        // F11でフルスクリーン切り替え
-        if (
-            keys[DIK_F11] != 0 &&
-            preKeys[DIK_F11] == 0
-            ) {
+		previousLeftDown = leftDown;
+		previousRightDown = rightDown;
 
-            ToggleFullScreen(
-                gameWindow,
-                windowRect,
-                windowStyle,
-                isFullScreen
-            );
-        }
+		if (keys[DIK_F11] != 0 && preKeys[DIK_F11] == 0) {
+			ToggleFullScreen(gameWindow, windowRect, windowStyle, isFullScreen);
+		}
 
-        // --------------------------------
-        // 更新処理
-        // --------------------------------
+		// 前のフレームの揺れを消してから今回の値を計算。
+		state.shakeX = 0;
+		state.shakeY = 0;
+		DrawBackground();
 
-        // ウィンドウの初期サイズを設定 
-        // ImGuiCond_FirstUseEver == 初回だけサイズを指定
-        ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_FirstUseEver);
+		switch (currentScene) {
 
-        // ImGui::Begin("Debug"); と ImGui::End();　で挟むことで、ImGuiのウィンドウを作成することができる
-        ImGui::Begin("Debug");
-       
-        ImGui::Combo(
-            "BlendMode",
-            reinterpret_cast<int*>(&currentScene),
-            "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
-        );
+		case SCENE_TITLE:
 
-        ImGui::End();
+			UpdateTitleScene(state, currentScene, titleSelection, keys, preKeys);
+			DrawTitleScene(titleSelection);
 
-        DrawBackground();
-
-        switch (currentScene) {
-
-        case SCENE_TITLE:
-
-            UpdateTitleScene(
-                state,
-                currentScene,
-                titleSelection,
-                keys,
-                preKeys
-            );
-
-            DrawTitleScene(titleSelection);
-
-            break;
+			break;
 
 		case SCENE_BGM:
 
-            break;
+			break;
 
 		case SCENE_CREDITS:
 
-            UpdateOtherScene(
-                keys,
-                preKeys
-            );
+			if (keys[DIK_RETURN] != 0 && preKeys[DIK_RETURN] == 0) {
+				currentScene = SCENE_TITLE;
+			}
 
-            DrawCreditsScene();
+			DrawCreditsScene();
 
-            break;
+			break;
 
-        case SCENE_TUTORIAL:
+		case SCENE_TUTORIAL:
 
-            UpdateBossScene(
-                state,
-                keys,
-                preKeys
-            );
+			BossTutorial::Update(tutorialState, currentScene, keys, preKeys, leftPressed, rightPressed);
 
-            break;
+			if (currentScene == SCENE_TUTORIAL) {
+				BossTutorial::Draw(tutorialState);
+			}
 
-        case SCENE_BOSS_SELECT:
+			break;
 
-            break;
+		case SCENE_BOSS_SELECT:
 
-        case SCENE_BOSS_A:
+			break;
 
-            UpdateBossScene(
-                state,
-                keys,
-                preKeys
-            );
+		case SCENE_BOSS_A:
 
-            DrawBossScene(state);
+			BossA::Update(state, currentScene, keys, preKeys, leftPressed, rightPressed);
 
-            break;
+			if (currentScene == SCENE_BOSS_A) {
 
-        case SCENE_BOSS_B:
+				if (state.shakeTimer > 0 && state.shakeTotalFrames > 0) {
 
-            break;
+					const float t = (float)state.shakeTimer / (float)state.shakeTotalFrames;
+					const float power = state.shakeMaxPower * t;
+					const int step = state.shakeTotalFrames - state.shakeTimer;
+					state.shakeX = (int)(sinf(step * 2.4f + 0.7f) * power);
+					state.shakeY = (int)(cosf(step * 3.1f + 0.4f) * power);
+				}
 
-        case SCENE_CLEAR:
+				BossA::Draw(state);
+			}
 
-            DrawClearScene();
+			break;
 
-            break;
+		case SCENE_BOSS_B:
 
-        case SCENE_GAMEOVER:
+			BossB::Update(dragonState, currentScene, keys, preKeys, leftPressed, rightPressed);
 
-            DrawGameOverScene();
+			if (currentScene == SCENE_BOSS_B) {
 
-            break;
+				BossB::Draw(dragonState);
+			}
 
-        default:
-            break;
-        }
+			break;
 
-        // --------------------------------
-        // 画面揺れ
-        // --------------------------------
+		case SCENE_CLEAR:
 
-        state.shakeX = 0;
-        state.shakeY = 0;
+			DrawClearScene();
 
-        if (
-            currentScene == SCENE_BOSS_A &&
-            state.shakeTimer > 0
-            ) {
+			if (keys[DIK_RETURN] != 0 && preKeys[DIK_RETURN] == 0) {
 
-            float t =
-                (float)state.shakeTimer /
-                (float)state.shakeTotalFrames;
+				currentScene = SCENE_TITLE;
+			}
 
-            float power = state.shakeMaxPower * t;
+			break;
 
-            int step =
-                state.shakeTotalFrames - state.shakeTimer;
+		case SCENE_GAMEOVER:
 
-            state.shakeX =
-                (int)(sinf(step * 2.4f + 0.7f) * power);
+			DrawGameOverScene();
 
-            state.shakeY =
-                (int)(cosf(step * 3.1f + 0.4f) * power);
-        }
+			if (keys[DIK_RETURN] != 0 && preKeys[DIK_RETURN] == 0) {
 
-        Novice::EndFrame();
+				currentScene = SCENE_TITLE;
+			}
 
-        // ESCキー
-        if (
-            preKeys[DIK_ESCAPE] == 0 &&
-            keys[DIK_ESCAPE] != 0
-            ) {
-            break;
-        }
-    }
+			break;
 
-    // 終了処理
-    Novice::Finalize();
+		default:
 
-    return 0;
+			break;
+		}
+
+		Novice::EndFrame();
+
+		if (keys[DIK_ESCAPE] != 0 && preKeys[DIK_ESCAPE] == 0) {
+
+			break;
+		}
+	}
+	Novice::Finalize();
+	return 0;
 }

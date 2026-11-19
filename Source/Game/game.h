@@ -7,15 +7,15 @@
 
 // シーンの種類
 enum Scene {
-	SCENE_TITLE,         // タイトル
-	SCENE_BGM,           // BGM
-    SCENE_CREDITS,       // クレジット
-    SCENE_TUTORIAL,      // チュートリアル
-    SCENE_BOSS_SELECT,   // ボス選択
-    SCENE_BOSS_A,        // ボスA
-    SCENE_BOSS_B,        // ボスB
-	SCENE_CLEAR,         // クリア
-	SCENE_GAMEOVER       // ゲームオーバー
+	SCENE_TITLE,       // タイトル
+	SCENE_BGM,         // BGM
+	SCENE_CREDITS,     // クレジット
+	SCENE_TUTORIAL,    // チュートリアル
+	SCENE_BOSS_SELECT, // ボス選択
+	SCENE_BOSS_A,      // ボスA
+	SCENE_BOSS_B,      // ボスB
+	SCENE_CLEAR,       // クリア
+	SCENE_GAMEOVER     // ゲームオーバー
 };
 
 // 画面サイズ
@@ -44,8 +44,25 @@ const float kSwordHitHeight = 100.0f;
 const int kSwordHitStart = 14;
 const int kSwordHitEnd = 3;
 
-// ボスの攻撃
-const int kShotInterval = 180;
+// 鬼の大きさと体力（60FPSを想定）
+const float kOniWidth = 136.0f;
+const float kOniHeight = 180.0f;
+const int kOniMaxHp = 12;
+const int kPlayerMaxHp = 6;
+const int kPlayerInvincibleFrames = 70;
+
+// 鬼の攻撃の時間：予兆 / 攻撃 / 後隙
+const int kSmashWindup = 72;
+const int kSmashActive = 12;
+const int kSmashRecovery = 72;
+const int kSweepWindup = 60;
+const int kSweepActive = 16;
+const int kSweepRecovery = 66;
+const int kChargeWindup = 84;
+const int kChargeActive = 46;
+const int kChargeRecovery = 90;
+const float kOniWalkSpeed = 3.4f;
+const float kOniChargeSpeed = 11.5f;
 
 // カウンター
 const float kCounterBulletSpeed = 23.0f;
@@ -56,8 +73,8 @@ const int kCounterHitStopFrames = 3;
 const int kCounterSlowFrames = 12;
 const float kCounterSlowScale = 0.25f;
 
-const int kCounterRetryCooldown = 30;
-const int kJustCounterWindow = 8;
+const int kCounterRetryCooldown = 32;
+const int kJustCounterWindow = 12;
 
 // ダッシュカウンター
 const float kDashCounterBulletSpeed = 32.0f;
@@ -70,47 +87,69 @@ const int kDashCounterImpactFrames = 24;
 
 // プレイヤー
 struct Player {
-    float x, y;
-    int direction;
-    float velocityY;
-    bool onGround;
+	float x, y;
+	int direction;
+	float velocityY;
+	bool onGround;
 };
 
 // ダッシュ残像
 struct DashAfterimage {
-    float x, y;
-    int timer;
+	float x, y;
+	int timer;
 };
 
 // ダッシュ衝撃波
 struct DashWave {
-    float x, y;
-    int timer;
+	float x, y;
+	int timer;
 };
 
-// ボス
+// 鬼の行動状態と攻撃種別
+enum class OniState {
+	Idle,
+	Move,
+	Telegraph, // 予備動作：攻撃範囲を予告
+	Attack,
+	Recovery, // 攻撃後の隙
+	Dead
+};
+
+enum class OniAttack {
+	Smash, // 金棒振り下ろし
+	Sweep, // 金棒薙ぎ払い
+	Charge // 突進
+};
+
 struct Boss {
-    float x, y;
-    int shotTimer;
+	float x = 0.0f;
+	float y = 0.0f;
+	int direction = -1;
+	int hp = kOniMaxHp;
+	OniState state = OniState::Idle;
+	OniAttack attack = OniAttack::Smash;
+	int stateTimer = 0;
+	int attackCount = 0;
+	bool hasHit = false; // 1回の攻撃で多段ヒットしない
 };
 
 // 弾の残像
 const int kTrailLength = 12;
 
 struct TrailPoint {
-    float x, y;
+	float x, y;
 };
 
 // 弾
 struct Bullet {
-    float x, y;
-    float vx, vy;
-    bool active;
-    bool reflected;
-    bool dashReflected;
+	float x, y;
+	float vx, vy;
+	bool active;
+	bool reflected;
+	bool dashReflected;
 
-    TrailPoint trail[kTrailLength];
-    int trailCount;
+	TrailPoint trail[kTrailLength];
+	int trailCount;
 };
 
 // 弾の最大数
@@ -118,85 +157,82 @@ const int kMaxBullets = 20;
 
 // カウンター演出
 struct CounterEffect {
-    float x;
-    float y;
-    int timer;
-    bool enhanced;
+	float x;
+	float y;
+	int timer;
+	bool enhanced;
 };
 
 // ゲーム全体の状態
 struct GameState {
 
-    Player player;
-    Boss boss;
-    Bullet bullets[kMaxBullets];
+	Player player;
+	Boss boss;                   // BossA（鬼）専用。BossB / Tutorialは各モジュールに独立Stateを持つ。
+	Bullet bullets[kMaxBullets]; // 旧弾システムを他シーン用に保持（鬼戦では使用しない）
 
-    CounterEffect counterEffect;
+	int playerHp = kPlayerMaxHp;
+	int playerInvincibleTimer = 0;
 
-    int counterCooldown = 0;
-    int bossFlash = 0;
+	CounterEffect counterEffect;
 
-    int hitStopTimer = 0;
-    int slowTimer = 0;
+	int counterCooldown = 0;
+	int bossFlash = 0;
 
-    float gameFrameAccumulator = 0.0f;
+	int hitStopTimer = 0;
+	int slowTimer = 0;
 
-    int shakeTimer = 0;
-    int shakeTotalFrames = kCounterShakeFrames;
-    float shakeMaxPower = kCounterShakePower;
+	float gameFrameAccumulator = 0.0f;
 
-    int specialFlashTimer = 0;
-    int specialImpactTimer = 0;
+	int shakeTimer = 0;
+	int shakeTotalFrames = kCounterShakeFrames;
+	float shakeMaxPower = kCounterShakePower;
 
-    float specialImpactX = 0.0f;
-    float specialImpactY = 0.0f;
+	int specialFlashTimer = 0;
+	int specialImpactTimer = 0;
 
-    int shakeX = 0;
-    int shakeY = 0;
+	float specialImpactX = 0.0f;
+	float specialImpactY = 0.0f;
 
-    // ダッシュ
-    bool dashRequest = false;
+	int shakeX = 0;
+	int shakeY = 0;
 
-    int dashTimer = 0;
-    int dashCooldown = 0;
+	// ダッシュ
+	bool dashRequest = false;
 
-    float dashDirX = 0.0f;
-    float dashDirY = 0.0f;
+	int dashTimer = 0;
+	int dashCooldown = 0;
 
-    DashWave dashWave;
-    DashAfterimage dashImages[kDashAfterimageCount];
+	float dashDirX = 0.0f;
+	float dashDirY = 0.0f;
 
-    int dashImageIndex = 0;
+	DashWave dashWave;
+	DashAfterimage dashImages[kDashAfterimageCount];
 
-    // 剣
-    int swordSwingTimer = 0;
+	int dashImageIndex = 0;
 
-    bool swordRequest = false;
-    bool normalSwordRequest = false;
-    bool normalSwordActive = false;
+	// 剣
+	int swordSwingTimer = 0;
 
-    bool swordHitBoss = false;
+	bool swordRequest = false;
+	bool normalSwordRequest = false;
+	bool normalSwordActive = false;
 
-    int swordHitFlashTimer = 0;
+	bool swordHitBoss = false;
 
-    // カウンター
-    int counterWindowTimer = 0;
-    bool counterArmed = false;
+	int swordHitFlashTimer = 0;
 
-    bool jumpRequest = false;
+	// カウンター
+	int counterWindowTimer = 0;
+	bool counterArmed = false;
 
-    bool justWindow = false;
+	bool jumpRequest = false;
+
+	bool justWindow = false;
 };
 
 // 共通関数
 void DrawBackground();
 
-unsigned int WithAlpha(
-    unsigned int rgb,
-    int alpha
-);
+unsigned int WithAlpha(unsigned int rgb, int alpha);
 
-bool IsHit(
-    float ax, float ay, float aw, float ah,
-    float bx, float by, float bw, float bh
-);
+bool IsHit(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh);
