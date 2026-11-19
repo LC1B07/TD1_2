@@ -2,6 +2,7 @@
 #include <Novice.h>
 #include <Windows.h>
 
+#pragma region // .h 読み込み
 #include "Source/Game/game.h"
 #include "Source/Player/player.h"
 #include "Source/Boss/boss.h"
@@ -10,6 +11,7 @@
 #include "Source/Scene/scene.h"
 #include "Source/FullScreen/fullScreen.h"
 #include "Source/Controller/Controller.h"
+#pragma endregion
 
 // 開発補助用　GUI
 #ifdef USE_IMGUI     // #ifdef USE_IMGUI と #endif　で囲う
@@ -28,6 +30,70 @@ int WINAPI WinMain(
 
     // 初期化
     Novice::Initialize(kWindowTitle, kWidth, kHeight);
+    
+#pragma region ImGuiのスタイル設定
+    ImGuiStyle& style = ImGui::GetStyle();
+
+    // ウィンドウ
+    style.WindowRounding = 10.0f;
+    style.WindowBorderSize = 1.5f;
+    style.WindowPadding = ImVec2(15.0f, 15.0f);
+
+    // ウィンドウタイトル
+    style.FrameRounding = 6.0f;
+    style.FrameBorderSize = 1.0f;
+
+    // ボタン・入力欄
+    style.GrabRounding = 6.0f;
+    style.ScrollbarRounding = 8.0f;
+
+    // 余白
+    style.ItemSpacing = ImVec2(10.0f, 10.0f);
+    style.FramePadding = ImVec2(10.0f, 6.0f);
+
+    // スクロールバー
+    style.ScrollbarSize = 15.0f;
+
+    ImVec4* colors = style.Colors;
+
+    // 背景
+    colors[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.09f, 0.14f, 1.00f);
+
+    // 枠線
+    colors[ImGuiCol_Border] = ImVec4(0.25f, 0.35f, 0.50f, 1.00f);
+
+    // 文字
+    colors[ImGuiCol_Text] = ImVec4(0.90f, 0.94f, 1.00f, 1.00f);
+
+    // 無効な文字
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.50f, 0.60f, 1.00f);
+
+    // タイトルバー
+    colors[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.12f, 0.20f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.22f, 0.36f, 1.00f);
+
+    // ボタン
+    colors[ImGuiCol_Button] = ImVec4(0.15f, 0.30f, 0.48f, 1.00f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(0.20f, 0.45f, 0.70f, 1.00f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(0.10f, 0.25f, 0.40f, 1.00f);
+
+    // Combo・入力欄
+    colors[ImGuiCol_FrameBg] = ImVec4(0.12f, 0.17f, 0.25f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.18f, 0.28f, 0.42f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.20f, 0.35f, 0.52f, 1.00f);
+
+    // スライダー
+    colors[ImGuiCol_SliderGrab] = ImVec4(0.30f, 0.65f, 0.95f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive] = ImVec4(0.45f, 0.75f, 1.00f, 1.00f);
+
+    // チェックボックス
+    colors[ImGuiCol_CheckMark] = ImVec4(0.35f, 0.75f, 1.00f, 1.00f);
+
+    // スクロールバー
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.05f, 0.07f, 0.11f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.35f, 0.48f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.35f, 0.50f, 0.68f, 1.00f);
+#pragma endregion
 
     // ウィンドウ情報
     HWND gameWindow = GetActiveWindow();
@@ -83,6 +149,7 @@ int WINAPI WinMain(
         // 更新処理
         // --------------------------------
 
+#pragma region ImGuiのフレーム開始
         // ウィンドウの初期サイズを設定 
         // ImGuiCond_FirstUseEver == 初回だけサイズを指定
         ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_FirstUseEver);
@@ -90,11 +157,17 @@ int WINAPI WinMain(
         // ImGui::Begin("Debug"); と ImGui::End();　で挟むことで、ImGuiのウィンドウを作成することができる
         ImGui::Begin("Debug");
        
+        // 文字を大きくする
+        ImGui::SetWindowFontScale(1.5f);
+
         ImGui::Combo(
             "currentScene",
             reinterpret_cast<int*>(&currentScene),
             "SCENE_TITLE\0SCENE_BGM\0SCENE_CREDITS\0SCENE_TUTORIAL\0SCENE_BOSS_SELECT\0SCENE_BOSS_A\0SCENE_BOSS_B\0SCENE_CLEAR\0SCENE_GAMEOVER\0"
         );
+
+        // 文字を大きくする
+        ImGui::SetWindowFontScale(2.0f);
 
         // シーン番号を表示
         ImGui::Text("SCENE : %d", currentScene);
@@ -135,6 +208,7 @@ int WINAPI WinMain(
         ImGui::Text("Right Stick Y : %.2f", Controller::GetRightStickY());
 
         ImGui::End();
+#pragma endregion
 
         DrawBackground();
 
