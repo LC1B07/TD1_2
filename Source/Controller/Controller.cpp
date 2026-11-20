@@ -152,6 +152,27 @@ namespace Controller {
         return currentLeftStickDown && !previousLeftStickDown;
     }
 
+
+    // 左スティックを左に倒し続けているか
+    bool IsLeftStickLeftDown() {
+        return currentLeftStickLeft;
+    }
+
+    // 左スティックを右に倒し続けているか
+    bool IsLeftStickRightDown() {
+        return currentLeftStickRight;
+    }
+
+    // 左スティックを上に倒し続けているか
+    bool IsLeftStickUpDown() {
+        return currentLeftStickUp;
+    }
+
+    // 左スティックを下に倒し続けているか
+    bool IsLeftStickDownDown() {
+        return currentLeftStickDown;
+    }
+
     // 離した瞬間か
     bool IsReleased(Button button) {
 

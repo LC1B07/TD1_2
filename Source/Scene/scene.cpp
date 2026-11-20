@@ -197,7 +197,11 @@ void UpdateBossScene(
     // Jキー
     bool justPressedJ = false;
 
-    if (keys[DIK_J] != 0 && preKeys[DIK_J] == 0) {
+    if (
+        keys[DIK_J] != 0 && preKeys[DIK_J] == 0 ||
+        Controller::IsDown(Controller::Button::kPadButton14) ||
+        Controller::IsDown(Controller::Button::kPadButton15)
+        ) {
         justPressedJ = true;
     }
 
@@ -246,26 +250,37 @@ void UpdateBossScene(
 
         --state.slowTimer;
     }
+    
+// ダッシュ入力
+bool dashPressed = false;
 
-    // ダッシュ入力
-    bool dashPressed = false;
+if (
+    (keys[DIK_LSHIFT] != 0 && preKeys[DIK_LSHIFT] == 0) ||
+    Controller::IsPressed(Controller::Button::kPadButton9) ||
+    Controller::IsPressed(Controller::Button::kPadButton8)
+) {
+    dashPressed = true;
+}
 
-    if (keys[DIK_LSHIFT] != 0 && preKeys[DIK_LSHIFT] == 0) {
-        dashPressed = true;
-    }
+if (dashPressed) {
+    state.dashRequest = true;
+}
 
-    if (dashPressed) {
-        state.dashRequest = true;
-    }
-
-    if (keys[DIK_LSHIFT] == 0) {
+    if (
+        keys[DIK_LSHIFT] == 0 ||
+        Controller::IsDown(Controller::Button::kPadButton9) ||
+        Controller::IsDown(Controller::Button::kPadButton8)
+        ) {
         state.dashRequest = false;
     }
 
     // ジャンプ入力
     bool jumpPressed = false;
 
-    if (keys[DIK_SPACE] != 0 && preKeys[DIK_SPACE] == 0) {
+    if (
+        keys[DIK_SPACE] != 0 && preKeys[DIK_SPACE] == 0 ||
+        Controller::IsDown(Controller::Button::kPadButton10)
+        ) {
         jumpPressed = true;
     }
 
@@ -276,7 +291,10 @@ void UpdateBossScene(
     // Hキー通常攻撃
     bool swordPressed = false;
 
-    if (keys[DIK_H] != 0 && preKeys[DIK_H] == 0) {
+    if (
+        keys[DIK_H] != 0 && preKeys[DIK_H] == 0 ||
+        Controller::IsDown(Controller::Button::kPadButton11)
+        ) {
         swordPressed = true;
     }
 

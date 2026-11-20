@@ -31,6 +31,9 @@ int WINAPI WinMain(
     // 初期化
     Novice::Initialize(kWindowTitle, kWidth, kHeight);
     
+    // コントローラー初期化
+    Controller::Initialize();
+
 #pragma region ImGuiのスタイル設定
     ImGuiStyle& style = ImGui::GetStyle();
 
@@ -196,8 +199,8 @@ int WINAPI WinMain(
         // L2 ボタンの状態
         ImGui::Text("Pad Button14 : %d", Controller::IsDown(Controller::Button::kPadButton14));  // L2ボタン
 
-        // L2 ボタンの状態
-        ImGui::Text("Pad Button15 : %d", Controller::IsDown(Controller::Button::kPadButton15));  // L2ボタン
+        // R2 ボタンの状態
+        ImGui::Text("Pad Button15 : %d", Controller::IsDown(Controller::Button::kPadButton15));  // R2ボタン
 
         // 左スティック
         ImGui::Text("Left Stick X : %.2f", Controller::GetLeftStickX());
@@ -212,11 +215,11 @@ int WINAPI WinMain(
 
         DrawBackground();
 
+        Controller::Update();
+
         switch (currentScene) {
 
         case SCENE_TITLE:
-
-            Controller::Update();
 
             UpdateTitleScene(
                 state,
@@ -231,6 +234,8 @@ int WINAPI WinMain(
             break;
 
 		case SCENE_BGM:
+
+            Novice::ScreenPrintf(10, 10, "Press ENTER to change scene");
 
             break;
 
@@ -253,6 +258,8 @@ int WINAPI WinMain(
                 preKeys
             );
 
+            DrawBossScene(state);
+
             break;
 
         case SCENE_BOSS_SELECT:
@@ -260,14 +267,6 @@ int WINAPI WinMain(
             break;
 
         case SCENE_BOSS_A:
-
-            UpdateBossScene(
-                state,
-                keys,
-                preKeys
-            );
-
-            DrawBossScene(state);
 
             break;
 
@@ -299,7 +298,7 @@ int WINAPI WinMain(
         state.shakeY = 0;
 
         if (
-            currentScene == SCENE_BOSS_A &&
+            currentScene == SCENE_TUTORIAL &&
             state.shakeTimer > 0
             ) {
 

@@ -1,5 +1,6 @@
 
 #include "../Player/player.h"
+#include "../Controller/Controller.h"
 
 // プレイヤー更新
 void UpdatePlayer(
@@ -36,12 +37,18 @@ void UpdatePlayer(
     float moveX = 0.0f;
 
     // Aキーを押している間
-    if (keys[DIK_A] != 0) {
+    if (
+        keys[DIK_A] != 0 ||
+        Controller::IsLeftStickLeftDown()
+        ) {
         moveX -= 1.0f;
     }
 
     // Dキーを押している間
-    if (keys[DIK_D] != 0) {
+    if (
+        keys[DIK_D] != 0 ||
+        Controller::IsLeftStickRightDown()
+        ) {
         moveX += 1.0f;
     }
 
@@ -67,21 +74,26 @@ void UpdatePlayer(
         state.dashRequest &&
         state.dashCooldown == 0 &&
         state.dashTimer == 0
-    ) {
-
+        ) {
         float inputDashX = moveX;
         float inputDashY = 0.0f;
 
         // 空中ダッシュ
         if (player.onGround == false) {
 
-            // Wキーを押した瞬間
-            if (preKeys[DIK_W] == 0 && keys[DIK_W] != 0) {
+            // 上方向
+            if (
+                keys[DIK_W] != 0 ||
+                Controller::IsLeftStickUpDown()
+                ) {
                 inputDashY -= 1.0f;
             }
 
-            // Sキーを押した瞬間
-            if (preKeys[DIK_S] == 0 && keys[DIK_S] != 0) {
+            // 下方向
+            if (
+                keys[DIK_S] != 0 ||
+                Controller::IsLeftStickDownDown()
+                ) {
                 inputDashY += 1.0f;
             }
         }

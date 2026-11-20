@@ -30,4 +30,9 @@ namespace Controller {
     bool IsLeftStickRightPressed();
     bool IsLeftStickUpPressed();
     bool IsLeftStickDownPressed();
+
+    bool IsLeftStickLeftDown();
+    bool IsLeftStickRightDown();
+    bool IsLeftStickUpDown();
+    bool IsLeftStickDownDown();
 }
