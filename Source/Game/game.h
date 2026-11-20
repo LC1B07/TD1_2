@@ -7,15 +7,15 @@
 
 // シーンの種類
 enum Scene {
-	SCENE_TITLE,         // タイトル
-	SCENE_BGM,           // BGM
-    SCENE_CREDITS,       // クレジット
-    SCENE_TUTORIAL,      // チュートリアル
-    SCENE_BOSS_SELECT,   // ボス選択
-    SCENE_BOSS_A,        // ボスA
-    SCENE_BOSS_B,        // ボスB
-	SCENE_CLEAR,         // クリア
-	SCENE_GAMEOVER       // ゲームオーバー
+	SCENE_TITLE,       // タイトル
+	SCENE_BGM,         // BGM
+	SCENE_CREDITS,     // クレジット
+	SCENE_TUTORIAL,    // チュートリアル
+	SCENE_BOSS_SELECT, // ボス選択
+	SCENE_BOSS_A,      // ボスA
+	SCENE_BOSS_B,      // ボスB
+	SCENE_CLEAR,       // クリア
+	SCENE_GAMEOVER     // ゲームオーバー
 };
 
 // 画面サイズ
@@ -70,47 +70,62 @@ const int kDashCounterImpactFrames = 24;
 
 // プレイヤー
 struct Player {
-    float x, y;
-    int direction;
-    float velocityY;
-    bool onGround;
+	float x, y;
+	int direction;
+	float velocityY;
+	bool onGround;
 };
 
 // ダッシュ残像
 struct DashAfterimage {
-    float x, y;
-    int timer;
+	float x, y;
+	int timer;
 };
 
 // ダッシュ衝撃波
 struct DashWave {
-    float x, y;
-    int timer;
+	float x, y;
+	int timer;
 };
+
+// 鬼ボスの状態（チュートリアルの射撃ボスとは独立して使用）
+enum class OniState { Idle, Move, Telegraph, Attack, Recovery, Dead };
+
+enum class OniAttack { Smash, Sweep, Charge };
 
 // ボス
 struct Boss {
-    float x, y;
-    int shotTimer;
+	// チュートリアルで使用。既存の並びは変更しない。
+	float x, y;
+	int shotTimer;
+
+	// ボスA（鬼）のみで使用。
+	int direction = -1;
+	int hp = 0;
+	OniState state = OniState::Idle;
+	OniAttack attack = OniAttack::Smash;
+	int stateTimer = 0;
+	int attackCount = 0;
+	bool hasHit = false;
 };
 
 // 弾の残像
 const int kTrailLength = 12;
 
 struct TrailPoint {
-    float x, y;
+	float x, y;
 };
 
 // 弾
 struct Bullet {
-    float x, y;
-    float vx, vy;
-    bool active;
-    bool reflected;
-    bool dashReflected;
+	float x, y;
+	float vx, vy;
+	bool active;
+	bool reflected;
+	bool dashReflected;
 
-    TrailPoint trail[kTrailLength];
-    int trailCount;
+	TrailPoint trail[kTrailLength];
+	int trailCount;
 };
 
 // 弾の最大数
@@ -118,85 +133,83 @@ const int kMaxBullets = 20;
 
 // カウンター演出
 struct CounterEffect {
-    float x;
-    float y;
-    int timer;
-    bool enhanced;
+	float x;
+	float y;
+	int timer;
+	bool enhanced;
 };
 
 // ゲーム全体の状態
 struct GameState {
 
-    Player player;
-    Boss boss;
-    Bullet bullets[kMaxBullets];
+	Player player;
+	Boss boss;
+	Bullet bullets[kMaxBullets];
 
-    CounterEffect counterEffect;
+	// ボスA（鬼）専用。チュートリアルはこれらを参照しない。
+	int playerHp = 0;
+	int playerInvincibleTimer = 0;
 
-    int counterCooldown = 0;
-    int bossFlash = 0;
+	CounterEffect counterEffect;
 
-    int hitStopTimer = 0;
-    int slowTimer = 0;
+	int counterCooldown = 0;
+	int bossFlash = 0;
 
-    float gameFrameAccumulator = 0.0f;
+	int hitStopTimer = 0;
+	int slowTimer = 0;
 
-    int shakeTimer = 0;
-    int shakeTotalFrames = kCounterShakeFrames;
-    float shakeMaxPower = kCounterShakePower;
+	float gameFrameAccumulator = 0.0f;
 
-    int specialFlashTimer = 0;
-    int specialImpactTimer = 0;
+	int shakeTimer = 0;
+	int shakeTotalFrames = kCounterShakeFrames;
+	float shakeMaxPower = kCounterShakePower;
 
-    float specialImpactX = 0.0f;
-    float specialImpactY = 0.0f;
+	int specialFlashTimer = 0;
+	int specialImpactTimer = 0;
 
-    int shakeX = 0;
-    int shakeY = 0;
+	float specialImpactX = 0.0f;
+	float specialImpactY = 0.0f;
 
-    // ダッシュ
-    bool dashRequest = false;
+	int shakeX = 0;
+	int shakeY = 0;
 
-    int dashTimer = 0;
-    int dashCooldown = 0;
+	// ダッシュ
+	bool dashRequest = false;
 
-    float dashDirX = 0.0f;
-    float dashDirY = 0.0f;
+	int dashTimer = 0;
+	int dashCooldown = 0;
 
-    DashWave dashWave;
-    DashAfterimage dashImages[kDashAfterimageCount];
+	float dashDirX = 0.0f;
+	float dashDirY = 0.0f;
 
-    int dashImageIndex = 0;
+	DashWave dashWave;
+	DashAfterimage dashImages[kDashAfterimageCount];
 
-    // 剣
-    int swordSwingTimer = 0;
+	int dashImageIndex = 0;
 
-    bool swordRequest = false;
-    bool normalSwordRequest = false;
-    bool normalSwordActive = false;
+	// 剣
+	int swordSwingTimer = 0;
 
-    bool swordHitBoss = false;
+	bool swordRequest = false;
+	bool normalSwordRequest = false;
+	bool normalSwordActive = false;
 
-    int swordHitFlashTimer = 0;
+	bool swordHitBoss = false;
 
-    // カウンター
-    int counterWindowTimer = 0;
-    bool counterArmed = false;
+	int swordHitFlashTimer = 0;
 
-    bool jumpRequest = false;
+	// カウンター
+	int counterWindowTimer = 0;
+	bool counterArmed = false;
 
-    bool justWindow = false;
+	bool jumpRequest = false;
+
+	bool justWindow = false;
 };
 
 // 共通関数
 void DrawBackground();
 
-unsigned int WithAlpha(
-    unsigned int rgb,
-    int alpha
-);
+unsigned int WithAlpha(unsigned int rgb, int alpha);
 
-bool IsHit(
-    float ax, float ay, float aw, float ah,
-    float bx, float by, float bw, float bh
-);
+bool IsHit(float ax, float ay, float aw, float ah, float bx, float by, float bw, float bh);
