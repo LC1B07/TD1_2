@@ -319,7 +319,7 @@ if (dashPressed) {
     if (updateGame) {
 
         // プレイヤー更新
-        UpdatePlayer(state, keys, preKeys);
+        UpdatePlayer(state, keys);
 
         // ボス更新
         UpdateBoss(

@@ -5,8 +5,7 @@
 // プレイヤー更新
 void UpdatePlayer(
     GameState& state,
-    const char keys[],
-    const char preKeys[]
+    const char keys[]
 ) {
 
     Player& player = state.player;
