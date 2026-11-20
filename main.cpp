@@ -20,7 +20,7 @@
 #include <imgui.h>
 #endif
 
-const char kWindowTitle[] = "TD1_2";
+const char kWindowTitle[] = "TD1_2_Develop";
 
 // Windowsアプリのエントリーポイント
 int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
