@@ -43,9 +43,6 @@
     <ClCompile Include="main.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Boss\boss.cpp">
-      <Filter>KamataEngine\ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="Source\Controller\Controller.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
@@ -55,7 +52,7 @@
     <ClCompile Include="Source\Boss\BossB\BossB.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="Source\Boss\BossTutorial\BossTutorial.cpp">
+    <ClCompile Include="Source\Boss\boss.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>
@@ -141,9 +138,6 @@
     <ClInclude Include="C:\KamataEngine\DirectXGame\2d\ImGuiManager.h">
       <Filter>KamataEngine\Include</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Boss\boss.h">
-      <Filter>KamataEngine\ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="Source\Bullet\bullet.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
@@ -171,7 +165,7 @@
     <ClInclude Include="Source\Boss\BossB\BossB.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="Source\Boss\BossTutorial\BossTutorial.h">
+    <ClInclude Include="Source\Boss\boss.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>
