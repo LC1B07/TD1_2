@@ -160,7 +160,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 #pragma region ImGuiのフレーム開始
 		// ウィンドウの初期サイズを設定
 		// ImGuiCond_Once == 起動後の初回だけ適用（移動・サイズ変更は可能）
-		ImGui::SetNextWindowPos(ImVec2(60.0f, 60.0f), ImGuiCond_Once);
+		ImGui::SetNextWindowPos(ImVec2(1450.0f, 60.0f), ImGuiCond_Once);
 		ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_Once);
 		ImGui::SetNextWindowCollapsed(false, ImGuiCond_Once);
 
