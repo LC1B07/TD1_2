@@ -49,6 +49,15 @@
     <ClCompile Include="Source\Controller\Controller.cpp">
       <Filter>KamataEngine\ソース ファイル</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Boss\BossA\BossA.cpp">
+      <Filter>KamataEngine\ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Boss\BossB\BossB.cpp">
+      <Filter>KamataEngine\ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Boss\BossTutorial\BossTutorial.cpp">
+      <Filter>KamataEngine\ソース ファイル</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="C:\KamataEngine\DirectXGame\audio\Audio.h">
@@ -154,6 +163,15 @@
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="Source\Controller\Controller.h">
+      <Filter>KamataEngine\ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Boss\BossA\BossA.h">
+      <Filter>KamataEngine\ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Boss\BossB\BossB.h">
+      <Filter>KamataEngine\ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Boss\BossTutorial\BossTutorial.h">
       <Filter>KamataEngine\ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>

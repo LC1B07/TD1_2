@@ -1,11 +1,15 @@
 
 #include <Novice.h>
 #include <Windows.h>
+#include <cstring>
+#include <cmath>
 
-#pragma region                       // .h 読み込み
-#include "Source/Boss/BossA/BossA.h" // 鬼
-#include "Source/Boss/BossB/BossB.h" // 竜
-#include "Source/Boss/boss.h"        // チュートリアル
+#pragma region .h 読み込み
+
+#include "Source/Boss/BossA/BossA.h"
+#include "Source/Boss/BossB/BossB.h"
+#include "Source/Boss/boss.h"
+
 #include "Source/Bullet/bullet.h"
 #include "Source/Controller/Controller.h"
 #include "Source/Effect/effect.h"
@@ -13,8 +17,8 @@
 #include "Source/Game/game.h"
 #include "Source/Player/player.h"
 #include "Source/Scene/scene.h"
-#pragma endregion
 
+#pragma endregion
 // 開発補助用　GUI
 #ifdef USE_IMGUI // #ifdef USE_IMGUI と #endif　で囲う
 #include <imgui.h>
