@@ -28,6 +28,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 	// 初期化
 	Novice::Initialize(kWindowTitle, kWidth, kHeight);
 
+	// ImGuiの配置をファイルに保存・読み込みしない
+	ImGui::GetIO().IniFilename = nullptr;
+
 	// コントローラー初期化
 	Controller::Initialize();
 
@@ -156,8 +159,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
 #pragma region ImGuiのフレーム開始
 		// ウィンドウの初期サイズを設定
-		// ImGuiCond_FirstUseEver == 初回だけサイズを指定
-		ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_FirstUseEver);
+		// ImGuiCond_Once == 起動後の初回だけ適用（移動・サイズ変更は可能）
+		ImGui::SetNextWindowPos(ImVec2(60.0f, 60.0f), ImGuiCond_Once);
+		ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f), ImGuiCond_Once);
+		ImGui::SetNextWindowCollapsed(false, ImGuiCond_Once);
 
 		// ImGui::Begin("Debug"); と ImGui::End();　で挟むことで、ImGuiのウィンドウを作成することができる
 		ImGui::Begin("Debug");

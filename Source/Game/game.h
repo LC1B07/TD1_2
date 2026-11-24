@@ -89,7 +89,7 @@ struct DashWave {
 };
 
 // 鬼ボスの状態（チュートリアルの射撃ボスとは独立して使用）
-enum class OniState { Idle, Move, Telegraph, Attack, Recovery, Dead };
+enum class OniState { Idle, Move, Telegraph, Attack, Recovery, Dead, Down, Roar };
 
 enum class OniAttack { Smash, Sweep, Charge };
 
@@ -107,6 +107,10 @@ struct Boss {
 	int stateTimer = 0;
 	int attackCount = 0;
 	bool hasHit = false;
+	int justGuardCount = 0;
+	bool isEnraged = false;
+	int chargeCount = 0;
+	float roarStartX = 0.0f, roarStartY = 0.0f, roarTargetX = 0.0f;
 };
 
 // 弾の残像

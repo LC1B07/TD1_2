@@ -8,7 +8,7 @@ namespace BossA {
 // 鬼ボス専用パラメータ（友達のチュートリアル設定は変更しない）
 constexpr float kOniWidth = 136.0f;
 constexpr float kOniHeight = 180.0f;
-constexpr int kOniMaxHp = 200;
+constexpr int kOniMaxHp = 300;
 constexpr int kPlayerMaxHp = 6;
 constexpr int kPlayerInvincibleFrames = 70;
 constexpr int kSmashWindup = 72;
@@ -24,6 +24,15 @@ constexpr float kOniWalkSpeed = 3.4f;
 constexpr float kOniChargeSpeed = 11.5f;
 constexpr int kOniCounterRetryCooldown = 32;
 constexpr int kOniJustCounterWindow = 12;
+constexpr int kDownFrames = 300;
+constexpr int kRoarFrames = 150;
+constexpr int kBreakCount = 3;
+constexpr int kSwordDamage = 2;
+constexpr int kDownMultiplier = 3;
+constexpr int kChargeTurnFrames = 30;
+constexpr int kEnragedChargeActive = 60;
+constexpr float kEnragedChargeSpeed = 14.0f;
+constexpr float kEnragedWalkSpeed = 4.2f;
 
 struct OniAttackBox {
 	float x, y, width, height;
@@ -43,7 +52,7 @@ float Clamp(float value, float minimum, float maximum) {
 	return value;
 }
 
-int GetWindup(OniAttack attack) {
+int GetBaseWindup(OniAttack attack) {
 	switch (attack) {
 	case OniAttack::Smash:
 		return kSmashWindup;
@@ -55,7 +64,7 @@ int GetWindup(OniAttack attack) {
 	return kSmashWindup;
 }
 
-int GetActive(OniAttack attack) {
+int GetBaseActive(OniAttack attack) {
 	switch (attack) {
 	case OniAttack::Smash:
 		return kSmashActive;
@@ -67,7 +76,7 @@ int GetActive(OniAttack attack) {
 	return kSmashActive;
 }
 
-int GetRecovery(OniAttack attack) {
+int GetBaseRecovery(OniAttack attack) {
 	switch (attack) {
 	case OniAttack::Smash:
 		return kSmashRecovery;
@@ -77,6 +86,84 @@ int GetRecovery(OniAttack attack) {
 		return kChargeRecovery;
 	}
 	return kSmashRecovery;
+}
+
+int GetWindup(const Boss& boss) {
+	if (boss.isEnraged && boss.attack == OniAttack::Charge && boss.chargeCount > 1)
+		return kChargeTurnFrames;
+	return GetBaseWindup(boss.attack) * (boss.isEnraged ? 75 : 100) / 100;
+}
+int GetActive(const Boss& boss) { return boss.isEnraged && boss.attack == OniAttack::Charge ? kEnragedChargeActive : GetBaseActive(boss.attack); }
+int GetRecovery(const Boss& boss) {
+	if (!boss.isEnraged)
+		return GetBaseRecovery(boss.attack);
+	switch (boss.attack) {
+	case OniAttack::Smash:
+		return 54;
+	case OniAttack::Sweep:
+		return 50;
+	default:
+		return 72;
+	}
+}
+float GetChargeSpeed(const Boss& boss) { return boss.isEnraged ? kEnragedChargeSpeed : kOniChargeSpeed; }
+
+// 形態移行を最優先。HP半分で止め、演出中の操作・攻撃を無効化。
+void ApplyOniDamage(GameState& state, int damage) {
+	Boss& boss = state.boss;
+	if (boss.state == OniState::Roar || boss.state == OniState::Dead)
+		return;
+	boss.hp -= damage;
+	if (!boss.isEnraged && boss.hp <= kOniMaxHp / 2) {
+		boss.hp = kOniMaxHp / 2;
+		boss.isEnraged = true;
+		boss.state = OniState::Roar;
+		boss.stateTimer = kRoarFrames;
+		boss.justGuardCount = 0;
+		boss.chargeCount = 0;
+		boss.hasHit = true;
+		boss.roarStartX = state.player.x;
+		boss.roarStartY = state.player.y;
+		boss.roarTargetX = state.player.x + 18.0f < boss.x + kOniWidth * 0.5f ? 0.0f : kWidth - 36.0f;
+
+		// 鬼が端にいる場合も、再開時にプレイヤーと重ならないようにする。
+		if (fabsf(boss.roarTargetX + 18.0f - (boss.x + kOniWidth * 0.5f)) < 220.0f)
+			boss.roarTargetX = boss.roarTargetX == 0.0f ? kWidth - 36.0f : 0.0f;
+		state.dashTimer = 0;
+		state.dashRequest = state.jumpRequest = state.swordRequest = state.normalSwordRequest = false;
+		state.swordSwingTimer = 0;
+		state.normalSwordActive = false;
+		state.counterArmed = state.justWindow = false;
+		state.counterWindowTimer = state.counterCooldown = 0;
+		state.hitStopTimer = state.slowTimer = 0;
+		state.gameFrameAccumulator = 0.0f;
+	} else if (boss.hp <= 0) {
+		boss.hp = 0;
+		boss.state = OniState::Dead;
+	}
+}
+
+void UpdateRoar(GameState& state) {
+	Boss& boss = state.boss;
+	const int elapsed = kRoarFrames - boss.stateTimer;
+	if (elapsed >= 18) {
+		const float t = Clamp((elapsed - 18) / 24.0f, 0.0f, 1.0f);
+		const float eased = 1.0f - (1.0f - t) * (1.0f - t);
+		state.player.x = boss.roarStartX + (boss.roarTargetX - boss.roarStartX) * eased;
+		state.player.y = Clamp(boss.roarStartY + (kGroundY - 48.0f - boss.roarStartY) * t - 65.0f * sinf(t * 3.14159265f), 0.0f, kGroundY - 48.0f);
+		state.player.velocityY = 0.0f;
+		state.player.onGround = t >= 1.0f;
+	}
+	if (elapsed == 42) {
+		state.shakeTimer = state.shakeTotalFrames = 78;
+		state.shakeMaxPower = 16.0f;
+	}
+	if (--boss.stateTimer <= 0) {
+		boss.state = OniState::Idle;
+		boss.stateTimer = 30;
+		state.playerInvincibleTimer = 30;
+		state.counterCooldown = 0;
+	}
 }
 
 void StartOniAttack(Boss& boss, const Player& player) {
@@ -98,7 +185,8 @@ void StartOniAttack(Boss& boss, const Player& player) {
 	}
 	++boss.attackCount;
 	boss.state = OniState::Telegraph;
-	boss.stateTimer = GetWindup(boss.attack);
+	boss.chargeCount = 1;
+	boss.stateTimer = GetWindup(boss);
 	boss.hasHit = false;
 }
 
@@ -172,8 +260,8 @@ OniAttackBox GetOniTelegraphBox(const Boss& boss) {
 		return GetOniAttackBox(boss);
 	}
 	// 突進だけは実際の移動経路を予告する。
-	const float pathLength = kOniChargeSpeed * kChargeActive;
-	return {boss.direction == 1 ? boss.x : boss.x - pathLength, kGroundY - 140.0f, pathLength + kOniWidth, 140.0f};
+	const float endX = Clamp(boss.x + boss.direction * GetChargeSpeed(boss) * GetActive(boss), 0.0f, kWidth - kOniWidth);
+	return {boss.direction == 1 ? boss.x : endX, boss.y + 24.0f, fabsf(endX - boss.x) + kOniWidth, kOniHeight - 24.0f};
 }
 
 void CounterOniAttack(GameState& state) {
@@ -182,11 +270,20 @@ void CounterOniAttack(GameState& state) {
 		return;
 
 	boss.hasHit = true;
-	boss.hp -= 5; // 右クリック成功は通常攻撃より強力なダメージ
-	if (boss.hp < 0)
-		boss.hp = 0;
-	boss.state = boss.hp > 0 ? OniState::Recovery : OniState::Dead;
-	boss.stateTimer = 90;
+	++boss.justGuardCount;
+	ApplyOniDamage(state, 5);
+	if (boss.state == OniState::Roar || boss.state == OniState::Dead)
+		return;
+	const bool broken = boss.justGuardCount >= kBreakCount;
+	if (broken) {
+		boss.state = OniState::Down;
+		boss.stateTimer = kDownFrames;
+		boss.chargeCount = 0;
+	} else if (!(boss.isEnraged && boss.attack == OniAttack::Charge)) {
+		boss.state = OniState::Recovery;
+		boss.stateTimer = 90;
+	}
+	// 怒り突進は1・2回目のJGで止めない。hasHitで同一突進の多重判定を防ぐ。
 	state.bossFlash = 18;
 	state.counterWindowTimer = 0;
 	state.counterArmed = false;
@@ -230,7 +327,7 @@ void UpdateBoss(GameState& state) {
 	case OniState::Move:
 		boss.direction = playerCenter < bossCenter ? -1 : 1;
 		if (distance > 177.0f) {
-			boss.x += boss.direction * kOniWalkSpeed;
+			boss.x += boss.direction * (boss.isEnraged ? kEnragedWalkSpeed : kOniWalkSpeed);
 			boss.x = Clamp(boss.x, 0.0f, kWidth - kOniWidth);
 		} else {
 			StartOniAttack(boss, state.player);
@@ -242,22 +339,30 @@ void UpdateBoss(GameState& state) {
 		--boss.stateTimer;
 		if (boss.stateTimer <= 0) {
 			boss.state = OniState::Attack;
-			boss.stateTimer = GetActive(boss.attack);
+			boss.stateTimer = GetActive(boss);
 		}
 		break;
 
 	case OniState::Attack:
 		if (boss.attack == OniAttack::Charge) {
-			boss.x += boss.direction * kOniChargeSpeed;
+			boss.x += boss.direction * GetChargeSpeed(boss);
 			boss.x = Clamp(boss.x, 0.0f, kWidth - kOniWidth);
 		}
 		TryOniAttackHit(state);
 		if (boss.state != OniState::Attack)
 			break; // カウンターで中断
 		--boss.stateTimer;
-		if (boss.stateTimer <= 0) {
-			boss.state = OniState::Recovery;
-			boss.stateTimer = GetRecovery(boss.attack);
+		if (boss.stateTimer <= 0 || (boss.attack == OniAttack::Charge && boss.isEnraged && (boss.x <= 0.0f || boss.x >= kWidth - kOniWidth))) {
+			if (boss.isEnraged && boss.attack == OniAttack::Charge && boss.chargeCount < 3) {
+				++boss.chargeCount;
+				boss.direction *= -1;
+				boss.state = OniState::Telegraph;
+				boss.stateTimer = GetWindup(boss);
+				boss.hasHit = false;
+			} else {
+				boss.state = OniState::Recovery;
+				boss.stateTimer = GetRecovery(boss);
+			}
 		}
 		break;
 
@@ -269,6 +374,15 @@ void UpdateBoss(GameState& state) {
 		}
 		break;
 
+	case OniState::Down:
+		if (--boss.stateTimer <= 0) {
+			boss.justGuardCount = 0;
+			boss.state = OniState::Idle;
+			boss.stateTimer = 16;
+		}
+		break;
+	case OniState::Roar:
+		break;
 	case OniState::Dead:
 		break;
 	}
@@ -289,11 +403,9 @@ void CheckSwordHitBoss(GameState& state) {
 		return;
 	}
 	state.swordHitBoss = true;
-	--state.boss.hp; // 左クリック攻撃は1ダメージ
-	if (state.boss.hp <= 0) {
-		state.boss.hp = 0;
-		state.boss.state = OniState::Dead;
-	}
+	if (state.boss.state == OniState::Roar || state.boss.state == OniState::Dead)
+		return;
+	ApplyOniDamage(state, kSwordDamage * (state.boss.state == OniState::Down ? kDownMultiplier : 1));
 	state.swordHitFlashTimer = 12;
 	state.bossFlash = 12;
 }
@@ -301,6 +413,10 @@ void CheckSwordHitBoss(GameState& state) {
 // BossA更新：攻撃入力／カウンター／AI／勝敗判定。
 void Update(GameState& state, Scene& currentScene, const char keys[], const char preKeys[], bool leftMousePressed, bool rightMousePressed) {
 	UpdateEffectTimers(state);
+	if (state.boss.state == OniState::Roar) {
+		UpdateRoar(state);
+		return;
+	}
 
 	// 右クリックを押した瞬間にカウンターの受付を開始。
 	// 弾の反射ではなく、鬼の攻撃が当たる瞬間を受け止める。
@@ -346,7 +462,8 @@ void Update(GameState& state, Scene& currentScene, const char keys[], const char
 		}
 
 		BossA::CheckSwordHitBoss(state);
-		UpdateBoss(state);
+		if (state.boss.state != OniState::Roar)
+			UpdateBoss(state);
 	}
 
 	// 成功判定に使った「現在フレーム」を含めて12F受付。
@@ -389,11 +506,7 @@ static void DrawOniWarning(const Boss& boss, int sx, int sy) {
 	Novice::DrawBox((int)area.x + sx, (int)area.y + sy, (int)area.width, (int)area.height, 0.0f, color, kFillModeWireFrame);
 
 	if (preparing) {
-		int total = kSmashWindup;
-		if (boss.attack == OniAttack::Sweep)
-			total = kSweepWindup;
-		if (boss.attack == OniAttack::Charge)
-			total = kChargeWindup;
+		int total = GetWindup(boss);
 		int remainingBar = (boss.stateTimer * 150) / total;
 		if (remainingBar < 0)
 			remainingBar = 0;
@@ -409,16 +522,21 @@ static void DrawOniWarning(const Boss& boss, int sx, int sy) {
 static void DrawOni(const Boss& boss, int sx, int sy, bool flashing) {
 	int x = (int)boss.x + sx;
 	int y = (int)boss.y + sy;
-	const unsigned int bodyColor = flashing ? 0xFFFFFFFFu : 0xAF4A50FFu;
-	const unsigned int faceColor = flashing ? 0xFFFFFFFFu : 0xD85A4FFFu;
+	const unsigned int bodyColor = flashing ? 0xFFFFFFFFu : (boss.isEnraged ? 0xC52C32FFu : 0xAF4A50FFu);
+	const unsigned int faceColor = flashing ? 0xFFFFFFFFu : (boss.isEnraged ? 0xEF4136FFu : 0xD85A4FFFu);
 
 	const bool crouch = boss.attack == OniAttack::Charge && (boss.state == OniState::Telegraph || boss.state == OniState::Attack);
 	if (crouch)
 		y += 12;
+	if (boss.state == OniState::Down)
+		y += 38;
+	if (boss.isEnraged) {
+		Novice::DrawEllipse(x + 68, y + 85, 85, 108, 0.0f, 0xFF382533u, kFillModeSolid);
+	}
 
 	// 脚・胴・頭を基本図形で描き、画像素材なしでも動作確認できる。
-	Novice::DrawBox(x + 29, y + 120, 32, crouch ? 48 : 60, 0.0f, 0x553E54FFu, kFillModeSolid);
-	Novice::DrawBox(x + 76, y + 120, 32, crouch ? 48 : 60, 0.0f, 0x553E54FFu, kFillModeSolid);
+	Novice::DrawBox(x + 29, y + 120, 32, boss.state == OniState::Down ? 22 : (crouch ? 48 : 60), 0.0f, 0x553E54FFu, kFillModeSolid);
+	Novice::DrawBox(x + 76, y + 120, 32, boss.state == OniState::Down ? 22 : (crouch ? 48 : 60), 0.0f, 0x553E54FFu, kFillModeSolid);
 	Novice::DrawBox(x + 22, y + 58, 92, 86, 0.0f, bodyColor, kFillModeSolid);
 	Novice::DrawEllipse(x + 68, y + 42, 37, 39, 0.0f, faceColor, kFillModeSolid);
 	// 2本の角
@@ -469,7 +587,9 @@ static void DrawOni(const Boss& boss, int sx, int sy, bool flashing) {
 	}
 	Novice::DrawEllipse(tipX, tipY, 11, 11, 0.0f, 0x727985FFu, kFillModeSolid);
 
-	if (boss.state == OniState::Recovery) {
+	if (boss.state == OniState::Down) {
+		Novice::ScreenPrintf(x + 38, y - 65, "DOWN!");
+	} else if (boss.state == OniState::Recovery) {
 		Novice::ScreenPrintf(x + 43, y - 50, "OPEN!");
 	}
 }
@@ -482,6 +602,18 @@ void Draw(const GameState& state) {
 	Novice::ScreenPrintf(30, 24, "BOSS A - ONI");
 	Novice::ScreenPrintf(30, 50, "PLAYER HP : %d / %d", state.playerHp, kPlayerMaxHp);
 	Novice::ScreenPrintf(30, 76, "ONI HP    : %d / %d", state.boss.hp, kOniMaxHp);
+
+	Novice::DrawBox(30, 100, 400, 14, 0.0f, 0x333333FFu, kFillModeSolid);
+	Novice::DrawBox(30, 100, 400 * state.boss.hp / kOniMaxHp, 14, 0.0f, 0xC94444FFu, kFillModeSolid);
+	for (int i = 0; i < kBreakCount; ++i) {
+		Novice::DrawBox(30 + i * 42, 122, 36, 12, 0.0f, i < state.boss.justGuardCount ? 0xFFD060FFu : 0x555555FFu, kFillModeSolid);
+	}
+	if (state.boss.isEnraged)
+		Novice::ScreenPrintf(460, 76, "ENRAGED");
+	if (state.boss.state == OniState::Down)
+		Novice::ScreenPrintf(170, 120, "DOWN: %.1fs / DAMAGE x3", state.boss.stateTimer / 60.0f);
+	if (state.boss.isEnraged && state.boss.attack == OniAttack::Charge && (state.boss.state == OniState::Telegraph || state.boss.state == OniState::Attack))
+		Novice::ScreenPrintf(460, 100, "CHARGE %d / 3", state.boss.chargeCount);
 
 	// 地面
 	Novice::DrawBox(0, (int)kGroundY + sy, kWidth, 6, 0.0f, 0x53627CFFu, kFillModeSolid);
@@ -502,6 +634,28 @@ void Draw(const GameState& state) {
 	// 攻撃範囲を鬼より先に描画し、予兆をはっきり見せる。
 	DrawOniWarning(state.boss, sx, sy);
 	DrawOni(state.boss, sx, sy, state.bossFlash > 0);
+
+	if (state.boss.state == OniState::Roar) {
+		const int elapsed = kRoarFrames - state.boss.stateTimer;
+		const int cx = (int)state.boss.x + 68 + sx;
+		const int cy = (int)state.boss.y + 85 + sy;
+		if (elapsed < 120) {
+			Novice::DrawEllipse(cx, cy, 94, 116, 0.0f, 0x66CCFF44u, kFillModeSolid);
+			Novice::DrawEllipse(cx, cy, 94, 116, 0.0f, 0x99DDFFFFu, kFillModeWireFrame);
+		}
+		if (elapsed >= 18 && elapsed < 42) {
+			const int radius = 90 + (elapsed - 18) * 34;
+			Novice::DrawEllipse(cx, cy, radius, radius, 0.0f, 0xFFDDAAFFu, kFillModeWireFrame);
+		}
+		if (elapsed >= 42 && elapsed < 120) {
+			for (int i = 0; i < 48; ++i) {
+				const float a = i * 6.2831853f / 48.0f;
+				const float inner = 150.0f + ((i * 37 + elapsed * 11) % 100);
+				Novice::DrawLine(cx + (int)(cosf(a) * inner), cy + (int)(sinf(a) * inner), cx + (int)(cosf(a) * 2400), cy + (int)(sinf(a) * 2400), 0xFFB0A099u);
+			}
+			Novice::ScreenPrintf(kWidth / 2 - 80, 250, "ROAR!!");
+		}
+	}
 
 	// 被弾無敵中のプレイヤーは点滅。
 	if (state.playerInvincibleTimer == 0 || (state.playerInvincibleTimer / 5) % 2 == 0) {
