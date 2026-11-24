@@ -26,6 +26,22 @@ void DrawBackground() {
     Novice::DrawBox(0, 0, kWidth, kHeight, 0.0f, 0x151826FF, kFillModeSolid);
 }
 
+// ガチャの背景パーティクルを移植。背景画像は塗りつぶさず光の粒だけ描画する。
+const int kBackgroundParticleCount = 32;
+void DrawBackgroundParticles(int frame) {
+    Novice::SetBlendMode(kBlendModeNormal);
+    for (int i = 0; i < kBackgroundParticleCount; ++i) {
+        int x = (i * 191 + 83) % kWidth;
+        int y = (i * 127 + 47 - frame / (2 + i % 3)) % kHeight;
+        if (y < 0) y += kHeight;
+        int radius = 2 + i % 4;
+        // 外側の半透明の光と中心の明るい粒を重ねる。
+        Novice::DrawBox(x - radius * 2, y - radius * 2, radius * 4, radius * 4,
+            0.0f, 0x7BBFFF30u, kFillModeSolid);
+        Novice::DrawBox(x, y, radius, radius, 0.0f, 0xD9F3FF90u, kFillModeSolid);
+    }
+}
+
 // ガチャで使ったアルファブレンディング（色の下位8bitが透明度）
 unsigned int WithAlpha(unsigned int rgb, int alpha) {
     if (alpha < 0) alpha = 0;
@@ -178,9 +194,12 @@ struct DragonCharge {
     int downHitFlash;    // ダウン中に剣が命中した演出
 };
 
+const int kBossMaxHP = 1000;
+
 struct Boss {
     float x, y;
     int shotTimer;
+    int hp; // 龍の現在HP
 };
 
 // 反射弾の残像：過去の位置を最大12個記録する
@@ -195,6 +214,10 @@ struct Bullet {
     bool active;
     bool reflected; // カウンターで反射した弾かどうか
     bool dashReflected; // ダッシュジャストカウンターで強化された弾か
+    bool giant; // 巨大魔力球か
+    int reflectLevel; // 0:未反射 1:通常パリィ 2:ジャスト 3:ダッシュジャスト
+    int homingTimer; // 巨大魔力球の追尾残り時間。反射すると追尾しない
+    int appearanceTimer; // 魔力球が回転しながら大きくなる登場演出の経過フレーム
     TrailPoint trail[kTrailLength]; // 古い位置を保持
     int trailCount;                 // 現在記録している数
 };
@@ -310,7 +333,7 @@ bool IsHit(float ax, float ay, float aw, float ah,
 
 void ResetBossBattle(Player& player, Boss& boss, Bullet bullets[]) {
     player = { 210.0f, kGroundY - 48.0f, 1, 0.0f, true };
-    boss = { kWidth - kBossWidth, 0.0f, 0 };
+    boss = { kWidth - kBossWidth, 0.0f, 0, kBossMaxHP };
     for (int i = 0; i < kMaxBullets; ++i) bullets[i].active = false;
 }
 
@@ -576,6 +599,87 @@ void DrawBreathGlow(const DragonBreath& breath, int maruTexture, int shakeX, int
     Novice::SetBlendMode(kBlendModeNormal);
 }
 
+// 巨大魔力球用の発光。ブレスと同じ maru.png を加算合成で重ねる。
+// 魔法陣の模様を隠さないよう、外側の光は薄く、中心は小さく明るくする。
+// 呼び出し元で加算合成に切り替えてから描画する。
+void DrawGiantOrbGlow(float cx, float cy, float radius, int maruTexture,
+    float time, bool enhanced) {
+    if (maruTexture < 0) return;
+    // 現在のブレスと同じ64x64の画像を想定。サイズ変更時はここを調整。
+    const float imageSize = 64.0f;
+    const float pulse = 1.0f + 0.07f * sinf(time * 0.22f);
+    const float strength = enhanced ? 1.25f : 1.0f;
+    const float outerSize = radius * 3.6f * pulse * strength;
+    const float middleSize = radius * 2.6f * pulse * strength;
+    const float coreSize = radius * 0.95f * pulse;
+    // 外側の広い青い光
+    Novice::DrawSprite((int)(cx - outerSize * 0.5f), (int)(cy - outerSize * 0.5f),
+        maruTexture, outerSize / imageSize, outerSize / imageSize, 0.0f,
+        WithAlpha(0x1479FF00u, enhanced ? 85 : 55));
+    // 魔法陣を包む水色の光
+    Novice::DrawSprite((int)(cx - middleSize * 0.5f), (int)(cy - middleSize * 0.5f),
+        maruTexture, middleSize / imageSize, middleSize / imageSize, 0.0f,
+        WithAlpha(0x42C6FF00u, enhanced ? 115 : 80));
+    // 中心の小さな青白い発光
+    Novice::DrawSprite((int)(cx - coreSize * 0.5f), (int)(cy - coreSize * 0.5f),
+        maruTexture, coreSize / imageSize, coreSize / imageSize, 0.0f,
+        WithAlpha(0xD5F6FF00u, enhanced ? 140 : 105));
+}
+
+// 雷の画像2枚を重ねて描画する。画像はどちらも128x1080。
+// kaminari1: 半透明の雷本体 / kaminari2: 加算合成する明るい芯。
+// x は雷の中心位置、bottomY は雷の下端。
+void DrawImageLightning(int texture1, int texture2, float x, float bottomY, int timer) {
+    if (timer <= 0) return;
+    const float imageWidth = 128.0f;
+    const float imageHeight = 1080.0f;
+    const float scaleX = 1.4f;
+    const float scaleY = 1.0f;
+    const float width = imageWidth * scaleX;
+    const float height = imageHeight * scaleY;
+    const int left = (int)(x - width * 0.5f);
+    const int top = (int)(bottomY - height);
+    // 最初に強く光り、最後の数フレームで消える。
+    const int alpha = timer < 7 ? timer * 255 / 7 : 255;
+    const float flicker = 1.0f + 0.045f * sinf((float)timer * 3.7f);
+    const int glowLeft = (int)(x - width * flicker * 0.5f);
+    const int glowTop = (int)(bottomY - height);
+
+    // 本体は通常合成。白い背景を残さず、元画像の透明度を活かす。
+    Novice::SetBlendMode(kBlendModeNormal);
+    if (texture1 >= 0) {
+        Novice::DrawSprite(left, top, texture1, scaleX, scaleY, 0.0f,
+            WithAlpha(0xB5DFFFFFu, alpha));
+    }
+    // 白い芯を加算合成で重ねる。雷の中心座標を共通にしてずれを防ぐ。
+    Novice::SetBlendMode(kBlendModeAdd);
+    if (texture2 >= 0) {
+        Novice::DrawSprite(glowLeft, glowTop, texture2,
+            scaleX * flicker, scaleY, 0.0f, WithAlpha(0xB6E9FFFFu, alpha));
+        // 少し広い発光層。画像を増やさず同じ素材を薄く重ねる。
+        Novice::DrawSprite((int)(x - width * 0.77f), top, texture2,
+            scaleX * 1.54f, scaleY, 0.0f,
+            WithAlpha(0x277CFF00u, alpha * 55 / 255));
+    }
+    Novice::SetBlendMode(kBlendModeNormal);
+}
+
+// 突進画像（500x120）を共通の中心と角度で描画する。
+void DrawChargeImage(int texture, float cx, float cy, float angle, unsigned int color) {
+    if (texture < 0) return;
+    const float hw = kChargeWidth * 0.5f;
+    const float hh = kChargeHeight * 0.5f;
+    const float lx[4] = { -hw, hw, -hw, hw };
+    const float ly[4] = { -hh, -hh, hh, hh };
+    int x[4], y[4];
+    for (int i = 0; i < 4; ++i) {
+        x[i] = (int)roundf(cx + lx[i] * cosf(angle) - ly[i] * sinf(angle));
+        y[i] = (int)roundf(cy + lx[i] * sinf(angle) + ly[i] * cosf(angle));
+    }
+    Novice::DrawQuad(x[0], y[0], x[1], y[1], x[2], y[2], x[3], y[3],
+        0, 0, 500, 120, texture, color);
+}
+
 const char kWindowTitle[] = "LC1D_03_イシダ_ノリヒコ_タイトル";
 
 // Windowsアプリでのエントリーポイント(main関数)
@@ -583,6 +687,16 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
     // ライブラリの初期化
     Novice::Initialize(kWindowTitle, kWidth, kHeight);
+    // 動く背景の4枚の画像（ボス戦専用）
+    const int bgTexture = Novice::LoadTexture("./Resources/haikei.png");
+    // 地面画像（1920x1080、地面の上端は896px）
+    const int groundTexture = Novice::LoadTexture("./Resources/jimen.png");
+    const int moonTexture = Novice::LoadTexture("./Resources/tuki.png");
+    
+    float cloudScroll = 0.0f;
+    float mistScroll = 0.0f;
+    float backgroundTime = 0.0f;
+
     Controller::Initialize(); // ゲームパッドのデッドゾーンを初期化
     srand((unsigned int)time(nullptr)); // 攻撃順序を毎回ランダムにする
     // カウンター表示画像（実行ファイルの作業フォルダからの相対パス）
@@ -597,11 +711,30 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     const int kBossIdleFrameHeight = 1080;
     const int bossIdleTexture = Novice::LoadTexture("./Resources/ryu.png");
     int bossIdleTimer = 0;
+    int giantGlowFrame = 0; // 魔力球の光を滑らかに脈動させる描画用タイマー
     int bossIdleFrame = 0; // 0～3の4コマを順番に再生
     //ブレンディングで利用するまるpng
     int maruTexture = Novice::LoadTexture("./Resources/maru.png");
+    // 巨大魔力球の魔法陣（256x256）
+    const int giantOrbTexture = Novice::LoadTexture("./Resources/kougeki1.png");
     // ブレス本体の円形描画を置き換える64x64画像
     int breathCircleTexture = Novice::LoadTexture("./Resources/maru2.png");
+
+    // 突進本体と加算発光の画像（500x120）
+    const int chargeTexture1 = Novice::LoadTexture("./Resources/tosin1.png");
+    const int chargeTexture2 = Novice::LoadTexture("./Resources/tosin2.png");
+
+    // 雷の描画用画像（Resourcesフォルダに配置）
+    const int lightningTexture1 = Novice::LoadTexture("./Resources/kaminari1.png");
+    const int lightningTexture2 = Novice::LoadTexture("./Resources/kaminari2.png");
+    // 突進と連動する3本の落雷。位置は突進予告時に決定する。
+    const int kRushLightningCount = 3;
+    const int kRushLightningDuration = 18;
+    const int kRushLightningInterval = 12;
+    float lightningX[kRushLightningCount] = {};
+    int lightningTimer[kRushLightningCount] = {};
+    bool lightningHit[kRushLightningCount] = {};
+    bool rushLightningReady = false;
 
     // キー入力結果を受け取る箱
     char keys[256] = { 0 };
@@ -648,6 +781,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     bool counterArmed = false; // この押下でジャストカウンター可能か
     bool jumpRequest = false; // ヒットストップ中でもジャンプ入力を保持
     DragonBreath breath = {};
+    DragonBreath breathSecond = {}; // 2本目のランダム方向ブレス
     DragonCharge charge = {};
     WireAttack wire = {};
     int wireWait = 0; // 互換用（ワイヤーの自動発動には使わない）
@@ -655,11 +789,28 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
     int lastAttack = -1; // 0:通常弾 1:しっぽ 2:ブレス 3:突進
     bool attackInProgress = false;
     int wireEscapeEffect = 0;
+    // 巨大魔力球のチャージ。0の攻撃枠でのみ発動する。
+    int giantChargeTimer = 0;
+    const int kGiantChargeFrames = 75;
+    const float kGiantRadius = 62.0f;
+    const int kGiantOrbCount = 5; // 同時に発射する魔力球の数
+    const int kGiantHomingFrames = 30; // 発射後約0.5秒だけ追尾（60FPS想定）
+    const float kGiantOrbSpeed = 8.0f;
+    const int kGiantAppearFrames = 24; // 24Fかけて回転しながら拡大（描画のみ）
+    const float kGiantHomingTurn = 0.035f; // 1フレームの方向補正率（小さいほど弱い追尾）
 
     // ウィンドウの×ボタンが押されるまでループ
     while (Novice::ProcessMessage() == 0) {
         // フレームの開始
         Novice::BeginFrame();
+        ++giantGlowFrame;
+        // 登場アニメーションは実フレームで更新。ヒットストップ中も止めない。
+        for (int i = 0; i < kMaxBullets; ++i) {
+            if (bullets[i].active && bullets[i].giant &&
+                bullets[i].appearanceTimer < kGiantAppearFrames) {
+                ++bullets[i].appearanceTimer;
+            }
+        }
 
         // キー入力を受け取る
         memcpy(preKeys, keys, 256);
@@ -672,10 +823,10 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             // Noviceのボタン番号はkPadButton.txtの対応表を使用する。0.3はコントローラーのでっとゾーン
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
             ////////////////////////////////////////////////////////////////////////////////////////////////////////
-            const bool left = Controller::IsDown(kPadButton2) || Controller::GetLeftStickX() < -0.30f;
-            const bool right = Controller::IsDown(kPadButton3) || Controller::GetLeftStickX() > 0.30f;
-            const bool upPad = Controller::IsDown(kPadButton0) || Controller::GetLeftStickY() < 0.30f;
-            const bool downPad = Controller::IsDown(kPadButton1) || Controller::GetLeftStickY() > -0.30f;
+            const bool left = Controller::IsDown(kPadButton2) || Controller::GetLeftStickX() < -0.10f;
+            const bool right = Controller::IsDown(kPadButton3) || Controller::GetLeftStickX() > 0.10f;
+            const bool upPad = Controller::IsDown(kPadButton0) || Controller::GetLeftStickY() < 0.10f;
+            const bool downPad = Controller::IsDown(kPadButton1) || Controller::GetLeftStickY() > -0.10f;
             /////////////////////////////////////////////////////////////////////////////////////////////////////////
             /////////////////////////////////////////////////////////////////////////////////////////////////////////
             if (left) keys[DIK_A] = 1;
@@ -698,15 +849,22 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 break;
             }
 
-            //コントローラーのキー入力はここ↓↓
-            ///////////////////////////////////////////////////
             if (Controller::IsDown(kPadButton11)) keys[DIK_LSHIFT] = 1; // B: ダッシュ
-            if (Controller::IsDown(kPadButton15)) keys[DIK_H] = 1; // L2: 剣
+            if (Controller::IsDown(kPadButton15)) keys[DIK_H] = 1; // R2: 剣
             if (Controller::IsDown(kPadButton13)) keys[DIK_J] = 1; // Y: パリィ
             if (Controller::IsDown(kPadButton9)) keys[DIK_J] = 1; // R1: パリィ
-            if (Controller::IsDown(kPadButton14)) keys[DIK_LSHIFT] = 1; // R2: ダッシュ
+            if (Controller::IsDown(kPadButton14)) keys[DIK_LSHIFT] = 1; // L2: ダッシュ
             if (Controller::IsDown(kPadButton4)) keys[DIK_RETURN] = 1; // START: 決定
             if (Controller::IsDown(kPadButton5)) keys[DIK_ESCAPE] = 1; // BACK: 終了
+        }
+
+        // 落雷は突進攻撃の一部。毎フレーム表示時間を減らす。
+        for (int i = 0; i < kRushLightningCount; ++i) {
+            if (lightningTimer[i] > 0) --lightningTimer[i];
+        }
+        if (currentScene != SCENE_BOSS) {
+            for (int i = 0; i < kRushLightningCount; ++i) lightningTimer[i] = 0;
+            rushLightningReady = false;
         }
 
         // 更新処理と描画処理の両方から参照するため、このスコープで宣言する。
@@ -758,13 +916,20 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     counterWindowTimer = 0;
                     counterArmed = false;
                     breath = {};
+                    breathSecond = {};
                     charge = {};
+                    rushLightningReady = false;
+                    for (int i = 0; i < kRushLightningCount; ++i) {
+                        lightningTimer[i] = 0;
+                        lightningHit[i] = false;
+                    }
                     wire = {};
                     wireWait = 0;
                     nextAttackWait = kAttackWaitMin;
                     lastAttack = -1;
                     attackInProgress = false;
                     wireEscapeEffect = 0;
+                    giantChargeTimer = 0;
                     currentScene = SCENE_BOSS;
                 }
                 else currentScene = SCENE_CREDITS;
@@ -799,7 +964,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 if (bullets[i].active) { bulletRemaining = true; break; }
             }
             const bool bossBusy = wire.phase != WIRE_IDLE ||
-                breath.phase != BREATH_IDLE || charge.phase != CHARGE_IDLE || bulletRemaining;
+                breath.phase != BREATH_IDLE || breathSecond.phase != BREATH_IDLE || charge.phase != CHARGE_IDLE || bulletRemaining || giantChargeTimer > 0;
             if (bossBusy) {
                 attackInProgress = true;
             }
@@ -821,6 +986,23 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     // プレイヤーの予告開始時の位置を通る軌道に固定する。
                     charge = {};
                     charge.phase = CHARGE_WARNING;
+                    // 画面の地面に3か所の着弾位置をランダム決定。
+                    // 互いに近すぎる位置を避けて回避できる隙間を作る。
+                    for (int i = 0; i < kRushLightningCount; ++i) {
+                        float candidate = 170.0f;
+                        for (int attempt = 0; attempt < 30; ++attempt) {
+                            candidate = 170.0f + (float)(rand() % (kWidth - 340));
+                            bool separated = true;
+                            for (int j = 0; j < i; ++j) {
+                                if (fabsf(candidate - lightningX[j]) < 230.0f) separated = false;
+                            }
+                            if (separated) break;
+                        }
+                        lightningX[i] = candidate;
+                        lightningTimer[i] = 0;
+                        lightningHit[i] = false;
+                    }
+                    rushLightningReady = true;
                     const float degrees = (float)(rand() % 37 - 18);
                     charge.angle = degrees * 3.14159265f / 180.0f;
                     charge.vx = cosf(charge.angle) * kChargeSpeed;
@@ -841,32 +1023,71 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     wire.targetY = player.y + 24.0f;
                 }
                 else if (choice == 2) {
-                    breath.phase = BREATH_WARNING;
-                    breath.timer = 0;
-                    breath.startX = boss.x + kDragonMouthOffsetX;
-                    breath.startY = boss.y + kDragonMouthY;
-                    float dx = player.x + 18.0f - breath.startX;
-                    float dy = player.y + 24.0f - breath.startY;
-                    float dist = sqrtf(dx * dx + dy * dy);
-                    if (dist < 0.001f) dist = 1.0f;
-                    breath.dirX = dx / dist;
-                    breath.dirY = dy / dist;
-                    breath.length = 0.0f;
+                    // ブレスを画面上部の左右から2本同時発射する。
+                    // それぞれ地面のランダムな位置を狙い、予告開始時に着弾位置を固定する。
+                    const float breathStartY = 70.0f;
+                    const float breathStartLeftX = 110.0f;
+                    const float breathStartRightX = (float)kWidth - 110.0f;
+                    const int targetMargin = 160;
+                    const int targetRange = kWidth - targetMargin * 2;
+                    const float firstTargetX = (float)(targetMargin + rand() % targetRange);
+                    float secondTargetX = (float)(targetMargin + rand() % targetRange);
+                    // 2本の着弾地点が近すぎる場合は再抽選する。
+                    for (int retry = 0; retry < 12 && fabsf(secondTargetX - firstTargetX) < 280.0f; ++retry) {
+                        secondTargetX = (float)(targetMargin + rand() % targetRange);
+                    }
+                    for (int i = 0; i < 2; ++i) {
+                        DragonBreath& currentBreath = (i == 0) ? breath : breathSecond;
+                        currentBreath = {};
+                        currentBreath.phase = BREATH_WARNING;
+                        currentBreath.startX = (i == 0) ? breathStartLeftX : breathStartRightX;
+                        currentBreath.startY = breathStartY;
+                        const float targetX = (i == 0) ? firstTargetX : secondTargetX;
+                        const float targetY = kGroundY;
+                        const float dx = targetX - currentBreath.startX;
+                        const float dy = targetY - currentBreath.startY;
+                        float dist = sqrtf(dx * dx + dy * dy);
+                        if (dist < 0.001f) dist = 1.0f;
+                        currentBreath.dirX = dx / dist;
+                        currentBreath.dirY = dy / dist;
+                    }
                 }
                 else {
-                    // 通常弾はここで1発だけ生成する。
-                    for (int i = 0; i < kMaxBullets; ++i) {
-                        if (!bullets[i].active) {
-                            float sx = boss.x;
-                            float sy = boss.y + kBossWireOffsetY;
-                            float dx = player.x + 18.0f - sx;
-                            float dy = player.y + 24.0f - sy;
-                            float len = sqrtf(dx * dx + dy * dy);
-                            if (len < 0.001f) len = 1.0f;
-                            bullets[i] = { sx, sy, dx / len * 7.0f,
-                                dy / len * 7.0f, true, false };
-                            break;
-                        }
+                    // 通常弾の代わりに、巨大魔力球の溜め攻撃を開始する。
+                    giantChargeTimer = 1;
+                }
+            }
+
+            // 巨大魔力球：チャージ後に5個同時発射する。
+            // 発射方向を扇状にずらし、最初の30ゲームフレームだけ緩やかに追尾する。
+            if (giantChargeTimer > 0) {
+                ++giantChargeTimer;
+                if (giantChargeTimer >= kGiantChargeFrames) {
+                    giantChargeTimer = 0;
+                    const float sx = boss.x + kDragonMouthOffsetX;
+                    const float sy = boss.y + kDragonMouthY;
+                    const float dx = player.x + 18.0f - sx;
+                    const float dy = player.y + 24.0f - sy;
+                    const float baseAngle = atan2f(dy, dx);
+                    int spawned = 0;
+                    for (int i = 0; i < kMaxBullets && spawned < kGiantOrbCount; ++i) {
+                        if (bullets[i].active) continue;
+                        // 5発を約±24度の扇形に発射。出現位置も少しずらして重なりを減らす。
+                        const float offset = (float)(spawned - 2);
+                        const float angle = baseAngle + offset * 0.21f;
+                        const float vx = cosf(angle) * kGiantOrbSpeed;
+                        const float vy = sinf(angle) * kGiantOrbSpeed;
+                        bullets[i] = {};
+                        bullets[i].x = sx + cosf(baseAngle + 1.5707963f) * offset * 22.0f;
+                        bullets[i].y = sy + sinf(baseAngle + 1.5707963f) * offset * 22.0f;
+                        bullets[i].vx = vx;
+                        bullets[i].vy = vy;
+                        bullets[i].active = true;
+                        bullets[i].giant = true;
+                        bullets[i].reflectLevel = 0;
+                        bullets[i].homingTimer = kGiantHomingFrames;
+                        bullets[i].appearanceTimer = 0;
+                        ++spawned;
                     }
                 }
             }
@@ -888,6 +1109,21 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             }
             else if (charge.phase == CHARGE_RUSH) {
                 ++charge.timer;
+                // 突進開始とともに、3本の落雷を12F間隔で落とす。
+                if (rushLightningReady) {
+                    for (int i = 0; i < kRushLightningCount; ++i) {
+                        if (charge.timer == 1 + i * kRushLightningInterval) {
+                            lightningTimer[i] = kRushLightningDuration;
+                        }
+                        // 雷は地面付近でのみ当たり判定を持つ。
+                        if (lightningTimer[i] > 0 && !lightningHit[i] && dashTimer <= 0 &&
+                            IsHit(player.x, player.y, 36.0f, 48.0f,
+                                lightningX[i] - 42.0f, kGroundY - 190.0f, 84.0f, 190.0f)) {
+                            lightningHit[i] = true;
+                            charge.hitFlash = 16; // 既存仕様と同様、被弾演出のみ
+                        }
+                    }
+                }
                 const float previousX = charge.x;
                 const float previousY = charge.y;
                 charge.x += charge.vx;
@@ -987,61 +1223,66 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 }
             }
 
-            // 龍ブレスは予告開始時のプレイヤー位置に向けて照準を固定する。
-            // 発射後にプレイヤーを追尾しないため、ジャンプや空中ダッシュで回避できる。
-            if (breath.hitFlash > 0) --breath.hitFlash;
-            if (breath.hitCooldown > 0) --breath.hitCooldown;
-            if (breath.phase == BREATH_WARNING) {
-                if (++breath.timer >= kBreathWarningFrames) {
-                    breath.phase = BREATH_EXTEND;
-                    breath.timer = 0;
+            // 2本のブレスをそれぞれ更新し、当たり判定も個別に計算する。
+            for (int breathIndex = 0; breathIndex < 2; ++breathIndex) {
+                DragonBreath& currentBreath = (breathIndex == 0) ? breath : breathSecond;
+                // 龍ブレスは予告開始時のランダムな位置に向けて照準を固定する。
+                // 発射後にプレイヤーを追尾しないため、ジャンプや空中ダッシュで回避できる。
+                if (currentBreath.hitFlash > 0) --currentBreath.hitFlash;
+                if (currentBreath.hitCooldown > 0) --currentBreath.hitCooldown;
+                if (currentBreath.phase == BREATH_WARNING) {
+                    if (++currentBreath.timer >= kBreathWarningFrames) {
+                        currentBreath.phase = BREATH_EXTEND;
+                        currentBreath.timer = 0;
+                    }
                 }
-            }
-            else if (breath.phase == BREATH_EXTEND) {
-                ++breath.timer;
-                float progress = (float)breath.timer / (float)kBreathExtendFrames;
-                if (progress > 1.0f) progress = 1.0f;
-                breath.length = 1600.0f * progress;
-                if (breath.timer >= kBreathExtendFrames) {
-                    breath.phase = BREATH_HOLD;
-                    breath.timer = 0;
-                    breath.length = 1600.0f;
+                else if (currentBreath.phase == BREATH_EXTEND) {
+                    ++currentBreath.timer;
+                    float progress = (float)currentBreath.timer / (float)kBreathExtendFrames;
+                    if (progress > 1.0f) progress = 1.0f;
+                    currentBreath.length = 2100.0f * progress;
+                    if (currentBreath.timer >= kBreathExtendFrames) {
+                        currentBreath.phase = BREATH_HOLD;
+                        currentBreath.timer = 0;
+                        currentBreath.length = 2100.0f;
+                    }
                 }
-            }
-            else if (breath.phase == BREATH_HOLD) {
-                if (++breath.timer >= kBreathHoldFrames) {
-                    breath.phase = BREATH_RECOVERY;
-                    breath.timer = 0;
+                else if (currentBreath.phase == BREATH_HOLD) {
+                    if (++currentBreath.timer >= kBreathHoldFrames) {
+                        currentBreath.phase = BREATH_RECOVERY;
+                        currentBreath.timer = 0;
+                    }
                 }
-            }
-            else if (breath.phase == BREATH_RECOVERY) {
-                if (++breath.timer >= kBreathRecoveryFrames) {
-                    breath.phase = BREATH_IDLE;
-                    breath.timer = 0;
+                else if (currentBreath.phase == BREATH_RECOVERY) {
+                    if (++currentBreath.timer >= kBreathRecoveryFrames) {
+                        currentBreath.phase = BREATH_IDLE;
+                        currentBreath.timer = 0;
+                    }
                 }
-            }
-            // 当たり判定：プレイヤー中心とブレス線分の最短距離で判定。
-            // 元の無敵テスト仕様に合わせて、ヒット演出だけを表示する。
-            if ((breath.phase == BREATH_EXTEND || breath.phase == BREATH_HOLD) &&
-                breath.hitCooldown == 0 && breath.length > 0.0f) {
-                float px = player.x + 18.0f - breath.startX;
-                float py = player.y + 24.0f - breath.startY;
-                float along = px * breath.dirX + py * breath.dirY;
-                if (along < 0.0f) along = 0.0f;
-                if (along > breath.length) along = breath.length;
-                float nearX = breath.startX + breath.dirX * along;
-                float nearY = breath.startY + breath.dirY * along;
-                float diffX = player.x + 18.0f - nearX;
-                float diffY = player.y + 24.0f - nearY;
-                const float hitRadius = kBreathRadius + 22.0f;
-                if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius && dashTimer > 0) {
-                    dashDodgeEffect = 20; // ブレスをダッシュで回避
-                    breath.hitCooldown = 12;
+                // 当たり判定：プレイヤー中心とブレス線分の最短距離で判定。
+                // 元の無敵テスト仕様に合わせて、ヒット演出だけを表示する。
+                if ((currentBreath.phase == BREATH_EXTEND || currentBreath.phase == BREATH_HOLD) &&
+                    currentBreath.hitCooldown == 0 && currentBreath.length > 0.0f) {
+                    float px = player.x + 18.0f - currentBreath.startX;
+                    float py = player.y + 24.0f - currentBreath.startY;
+                    float along = px * currentBreath.dirX + py * currentBreath.dirY;
+                    if (along < 0.0f) along = 0.0f;
+                    if (along > currentBreath.length) along = currentBreath.length;
+                    float nearX = currentBreath.startX + currentBreath.dirX * along;
+                    float nearY = currentBreath.startY + currentBreath.dirY * along;
+                    float diffX = player.x + 18.0f - nearX;
+                    float diffY = player.y + 24.0f - nearY;
+                    const float hitRadius = kBreathRadius + 22.0f;
+                    if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius && dashTimer > 0) {
+                        dashDodgeEffect = 20; // ブレスをダッシュで回避
+                        currentBreath.hitCooldown = 12;
+                    }
+                    else if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius) {
+                        currentBreath.hitFlash = 14;
+                        currentBreath.hitCooldown = 45;
+                    }
                 }
-                else if (diffX * diffX + diffY * diffY <= hitRadius * hitRadius) {
-                    breath.hitFlash = 14;
-                    breath.hitCooldown = 45;
-                }
+
             }
 
             const bool justPressedJ = keys[DIK_J] && !preKeys[DIK_J];
@@ -1308,6 +1549,9 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                             counterEffect = { charge.x + kChargeWidth * 0.5f,
                                 charge.y + kChargeHeight * 0.5f, 30, false };
                         }
+                        // ダウン中は通常の3倍のダメージ
+                        boss.hp -= hitDownDragon ? 30 : 10;
+                        if (boss.hp < 0) boss.hp = 0;
                         swordHitBoss = true;
                         swordHitFlashTimer = 12;
                         bossFlash = 12; // 試作用：命中するとボスが白く光る
@@ -1328,6 +1572,26 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         b.trail[0] = { b.x, b.y };
                         if (b.trailCount < kTrailLength) ++b.trailCount;
                     }
+                    // 未反射の巨大魔力球だけ、短時間ゆるくプレイヤーへ向きを変える。
+                    // 反射した弾は従来どおりボスへ直進する。
+                    if (b.giant && !b.reflected && b.homingTimer > 0) {
+                        --b.homingTimer;
+                        const float dx = player.x + 18.0f - b.x;
+                        const float dy = player.y + 24.0f - b.y;
+                        const float dist = sqrtf(dx * dx + dy * dy);
+                        if (dist > 0.001f) {
+                            // 現在の進行方向と目標方向を混ぜて、急に曲がらないようにする。
+                            const float targetVX = dx / dist * kGiantOrbSpeed;
+                            const float targetVY = dy / dist * kGiantOrbSpeed;
+                            b.vx += (targetVX - b.vx) * kGiantHomingTurn;
+                            b.vy += (targetVY - b.vy) * kGiantHomingTurn;
+                            const float speed = sqrtf(b.vx * b.vx + b.vy * b.vy);
+                            if (speed > 0.001f) {
+                                b.vx = b.vx / speed * kGiantOrbSpeed;
+                                b.vy = b.vy / speed * kGiantOrbSpeed;
+                            }
+                        }
+                    }
                     b.x += b.vx;
                     b.y += b.vy;
                     // ジャスト判定中はプレイヤー中心から90px以内に入った弾を反射。
@@ -1335,7 +1599,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     if (!b.reflected && justWindow) {
                         float dx = b.x - (player.x + 18.0f);
                         float dy = b.y - (player.y + 24.0f);
-                        if (dx * dx + dy * dy <= 90.0f * 90.0f) {
+                        if (dx * dx + dy * dy <= (b.giant ? 120.0f * 120.0f : 90.0f * 90.0f)) {
                             // Shiftキーではなく「実際にダッシュしているか」で判定する。
                             const bool dashJustCounter = dashTimer > 0;
                             counterEffect = { b.x, b.y, 30, dashJustCounter };
@@ -1359,6 +1623,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                             b.vy = toBossY / length * reflectedSpeed;
                             b.reflected = true;
                             b.dashReflected = dashJustCounter;
+                            b.reflectLevel = dashJustCounter ? 3 : 2;
                             // 反射前の黄色い弾の軌跡は引き継がない
                             b.trailCount = 0;
                             // 1回の押下で複数の弾を反射しない
@@ -1368,15 +1633,45 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                             counterArmed = false;
                         }
                     }
-                    if (b.x < -20 || b.x > kWidth + 20 ||
-                        b.y < -20 || b.y > kHeight + 20) {
+                    // 通常パリィ：ジャスト受付終了後でも、剣を振っている間に
+                    // 巨大魔力球が近くに来れば低速で押し返せる（強化演出なし）。
+                    // 先にジャスト判定を行うため、ジャスト成功時はこちらには入らない。
+                    if (b.active && b.giant && !b.reflected && !justWindow &&
+                        swordSwingTimer > 0 && !normalSwordActive &&
+                        counterWindowTimer == 0) {
+                        float px = player.x + 18.0f;
+                        float py = player.y + 24.0f;
+                        float dx = b.x - px, dy = b.y - py;
+                        float range = kGiantRadius + 48.0f;
+                        if (dx * dx + dy * dy <= range * range) {
+                            float bx = boss.x + kBossWidth * 0.5f - b.x;
+                            float by = boss.y + kBossWireOffsetY - b.y;
+                            float len = sqrtf(bx * bx + by * by);
+                            if (len < 0.001f) len = 1.0f;
+                            b.vx = bx / len * 6.0f;
+                            b.vy = by / len * 6.0f;
+                            b.reflected = true;
+                            b.reflectLevel = 1;
+                            b.trailCount = 0;
+                            counterEffect = { b.x, b.y, 30, false };
+                        }
+                    }
+                    const float margin = b.giant ? kGiantRadius : 20.0f;
+                    if (b.x < -margin || b.x > kWidth + margin ||
+                        b.y < -margin || b.y > kHeight + margin) {
                         b.active = false;
                         continue;
                     }
                     if (b.reflected && IsHit(boss.x, boss.y, kBossWidth, kBossHeight,
-                        b.x - 8, b.y - 8, 16, 16)) {
+                        b.x - (b.giant ? kGiantRadius : 8.0f),
+                        b.y - (b.giant ? kGiantRadius : 8.0f),
+                        b.giant ? kGiantRadius * 2.0f : 16.0f,
+                        b.giant ? kGiantRadius * 2.0f : 16.0f)) {
                         b.active = false;
-                        bossFlash = 12; // ボスに命中したら白く点滅
+                        // 反射の強さに応じてHPを減らす
+                        boss.hp -= b.reflectLevel == 3 ? 100 : b.reflectLevel == 2 ? 50 : 20;
+                        if (boss.hp < 0) boss.hp = 0;
+                        bossFlash = b.giant ? (b.reflectLevel == 3 ? 32 : b.reflectLevel == 2 ? 22 : 10) : 12; // 反射の強さに応じて演出
                         if (b.dashReflected) {
                             specialImpactX = b.x;
                             specialImpactY = b.y;
@@ -1384,7 +1679,11 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         }
                         continue;
                     }
-                    if (!b.reflected && IsHit(player.x, player.y, 36, 48, b.x - 8, b.y - 8, 16, 16)) {
+                    if (!b.reflected && IsHit(player.x, player.y, 36, 48,
+                        b.x - (b.giant ? kGiantRadius : 8.0f),
+                        b.y - (b.giant ? kGiantRadius : 8.0f),
+                        b.giant ? kGiantRadius * 2.0f : 16.0f,
+                        b.giant ? kGiantRadius * 2.0f : 16.0f)) {
                         if (dashTimer > 0) {
                             dashDodgeEffect = 20;
                             b.active = false;
@@ -1397,8 +1696,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     }
                 }
             }
-            // 動作確認用：Enterでクリア画面へ
-            if (enter && currentScene == SCENE_BOSS) currentScene = SCENE_CLEAR;
+            // 龍のHPが0になったらクリア画面へ
+            if (boss.hp <= 0) currentScene = SCENE_CLEAR;
         }
         else if (enter) {
             switch (currentScene) {
@@ -1430,7 +1729,8 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
         // 最大20pxの強い画面シェイクを持続させる。
         // 予告中・攻撃終了後は揺らさず、当たり判定の座標も変更しない。
         if (currentScene == SCENE_BOSS &&
-            (breath.phase == BREATH_EXTEND || breath.phase == BREATH_HOLD)) {
+            ((breath.phase == BREATH_EXTEND || breath.phase == BREATH_HOLD) ||
+                (breathSecond.phase == BREATH_EXTEND || breathSecond.phase == BREATH_HOLD))) {
             const float breathShakePower = kDashCounterShakePower;
             const float tick = (float)breath.timer;
             const int breathShakeX = (int)(sinf(tick * 2.4f + 0.7f) * breathShakePower);
@@ -1450,6 +1750,23 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
 
         // 全シーン共通の単色背景を描画する
         DrawBackground();
+        // ボス戦の背景は実フレームで動かす（ヒットストップ中も流れる）。
+        if (currentScene == SCENE_BOSS) {
+            backgroundTime += 0.0166667f;
+            cloudScroll = fmodf(cloudScroll + 0.45f, 1920.0f);
+            mistScroll = fmodf(mistScroll + 1.2f, 1024.0f);
+            Novice::SetBlendMode(kBlendModeNormal);
+            // 山と夜空：1920x1080の原寸で固定描画。
+            Novice::DrawSprite(0, 0, bgTexture, 1.0f, 1.0f, 0.0f, 0xFFFFFFFFu);
+            // 月：350x350。淡い加算発光を重ねる。
+            Novice::DrawSprite(680, 85, moonTexture, 0.85f, 0.85f, 0.0f, 0xFFFFFFFFu);
+            Novice::SetBlendMode(kBlendModeAdd);
+            Novice::DrawSprite(680, 85, moonTexture, 0.85f, 0.85f, 0.0f,
+                WithAlpha(0xA5CFFF00u, 24 + (int)(8.0f * sinf(backgroundTime))));
+            Novice::SetBlendMode(kBlendModeNormal);
+            
+        }
+
 
         // ボスの待機アニメーションを毎フレーム進める。
         // 攻撃中の処理や当たり判定とは独立した描画用タイマー。
@@ -1469,10 +1786,18 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
             DrawMenuButton(800, 520, "CREDITS", titleSelection == 1);
             Novice::ScreenPrintf(810, 640, "W / S : SELECT    ENTER : OK");
             break;
-        case SCENE_BOSS:
+        case SCENE_BOSS: {
             Novice::ScreenPrintf(870, 60, "BOSS BATTLE");
             // ジャンプ用の地面を描画する。
-            Novice::DrawBox(0, (int)kGroundY + shakeY, kWidth, 4, 0.0f, 0x53627CFF, kFillModeSolid);
+            // 画像の地面部分（896～1080px）を当たり判定の高さ930pxに合わせる。
+            // 下端まで150pxに縮め、画面シェイクにも追従させる。
+            Novice::DrawQuad(0, (int)kGroundY + shakeY,
+                kWidth, (int)kGroundY + shakeY,
+                0, kHeight + shakeY,
+                kWidth, kHeight + shakeY,
+                0, 896, 1920, 184, groundTexture, 0xFFFFFFFFu);
+            // 背景の光は地面の上、プレイヤーや攻撃より後ろに描画する。
+            DrawBackgroundParticles(giantGlowFrame);
             // ダッシュ残像：古いものほど薄く消える
             for (int i = 0; i < kDashAfterimageCount; ++i) {
                 const DashAfterimage& a = dashImages[i];
@@ -1539,24 +1864,28 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 Novice::ScreenPrintf(500, 110, "DRAGON CHARGE WARNING!");
             }
             if (charge.phase == CHARGE_RUSH) {
-                int cx = (int)charge.x + shakeX;
-                int cy = (int)charge.y + shakeY;
-                // 速度感のある残像（少数の矩形で2000描画制限に配慮）。
+                const float cx = charge.x + kChargeWidth * 0.5f + shakeX;
+                const float cy = charge.y + kChargeHeight * 0.5f + shakeY;
+                // 速度感のある残像（少数の画像で2000描画制限に配慮）。
+                Novice::SetBlendMode(kBlendModeAdd);
                 for (int i = 3; i >= 1; --i) {
-                    Novice::DrawBox(cx - (int)(charge.vx / kChargeSpeed * i * 40.0f),
-                        cy + 12 - (int)(charge.vy / kChargeSpeed * i * 40.0f),
-                        (int)kChargeWidth, (int)kChargeHeight - 24,
-                        charge.angle, WithAlpha(0xB84C4C00u, 55 - i * 12), kFillModeSolid);
+                    DrawChargeImage(chargeTexture2,
+                        cx - charge.vx / kChargeSpeed * i * 40.0f,
+                        cy - charge.vy / kChargeSpeed * i * 40.0f,
+                        charge.angle, WithAlpha(0xFFFFFF00u, 110 - i * 25));
                 }
-                Novice::DrawBox(cx, cy, (int)kChargeWidth, (int)kChargeHeight,
-                    charge.angle, 0xAD3D4EFFu, kFillModeSolid);
-                Novice::DrawBox(cx + 12, cy + 14, (int)kChargeWidth - 24, (int)kChargeHeight - 28,
-                    charge.angle, 0xED7780FFu, kFillModeSolid);
-                // 進行方向（右）へ突き出た角と目。
-                Novice::DrawLine(cx + (int)kChargeWidth - 30, cy + 18,
-                    cx + (int)kChargeWidth + 25, cy - 12, 0xFFE3B5FFu);
-                Novice::DrawEllipse(cx + (int)kChargeWidth - 34, cy + 37,
-                    7, 7, 0.0f, 0xFFF29AFFu, kFillModeSolid);
+                // 本体は通常合成、発光画像は加算合成で同じ位置に重ねる。
+                Novice::SetBlendMode(kBlendModeNormal);
+                if (chargeTexture1 >= 0) {
+                    DrawChargeImage(chargeTexture1, cx, cy, charge.angle, 0xFFFFFFFFu);
+                }
+                else {
+                    Novice::DrawBox((int)charge.x + shakeX, (int)charge.y + shakeY,
+                        (int)kChargeWidth, (int)kChargeHeight, charge.angle, 0x5FCDE4FFu, kFillModeSolid);
+                }
+                Novice::SetBlendMode(kBlendModeAdd);
+                DrawChargeImage(chargeTexture2, cx, cy, charge.angle, 0xFFFFFFFFu);
+                Novice::SetBlendMode(kBlendModeNormal);
             }
             // パリィ後の龍：回転落下 → 地面で240Fダウン → 起き上がり。
             if (charge.phase == CHARGE_FALL || charge.phase == CHARGE_DOWN ||
@@ -1639,12 +1968,35 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     WithAlpha(0x9CEFFFFFu, wireEscapeEffect * 8), kFillModeWireFrame);
                 Novice::ScreenPrintf(530, 200, "TAIL JUST COUNTER!");
             }
+            // 突進予告中と落雷前は着弾地点に赤い予告リングを表示する。
+            if (rushLightningReady && (charge.phase == CHARGE_WARNING ||
+                charge.phase == CHARGE_LEAVE || charge.phase == CHARGE_RUSH)) {
+                for (int i = 0; i < kRushLightningCount; ++i) {
+                    const bool pending = charge.phase != CHARGE_RUSH ||
+                        charge.timer < 1 + i * kRushLightningInterval;
+                    if (pending) {
+                        int cx = (int)lightningX[i] + shakeX;
+                        int cy = (int)kGroundY + shakeY;
+                        int alpha = 110 + (int)(65.0f * sinf((float)charge.timer * 0.2f));
+                        Novice::DrawEllipse(cx, cy, 48, 12, 0.0f,
+                            WithAlpha(0xFF555500u, alpha), kFillModeWireFrame);
+                    }
+                }
+            }
+            // 2枚の画像を通常合成＋加算合成で重ね、3本の雷を描画する。
+            for (int i = 0; i < kRushLightningCount; ++i) {
+                DrawImageLightning(lightningTexture1, lightningTexture2,
+                    lightningX[i] + shakeX, kGroundY + shakeY, lightningTimer[i]);
+            }
+
             // 龍のブレス：予告時は口元に炎を集め、発射中はうねる炎・火の粉・着弾炎を描画。
             // 見た目だけを変更。DragonBreathの長さ、方向、当たり判定には触れない。
             DrawDragonFireBreath(breath, breathCircleTexture, shakeX, shakeY);
+            DrawDragonFireBreath(breathSecond, breathCircleTexture, shakeX, shakeY);
             // maru.pngを加算合成で重ねて、炎に光の層を追加する。
             DrawBreathGlow(breath, maruTexture, shakeX, shakeY);
-            if (breath.hitFlash > 0) {
+            DrawBreathGlow(breathSecond, maruTexture, shakeX, shakeY);
+            if (breath.hitFlash > 0 || breathSecond.hitFlash > 0) {
                 Novice::ScreenPrintf(475, 215, "BREATH HIT! (TEST INVINCIBLE)");
             }
 
@@ -1673,9 +2025,87 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                         WithAlpha(b.dashReflected ? 0xE5FFFFFFu : 0x86E9FF00u, alpha), kFillModeSolid);
                 }
             }
-            // ボスの弾（黄色い円）
+            // 巨大魔力球のチャージ中は、龍の口元に青白い光が集まる。
+            if (giantChargeTimer > 0) {
+                float t = (float)giantChargeTimer / (float)kGiantChargeFrames;
+                float cx = boss.x + kDragonMouthOffsetX + shakeX;
+                float cy = boss.y + kDragonMouthY + shakeY;
+                int r = (int)(16.0f + 52.0f * t);
+                Novice::SetBlendMode(kBlendModeAdd);
+                // チャージ中も maru.png の光が徐々に大きくなる。
+                DrawGiantOrbGlow(cx, cy, (float)r, maruTexture,
+                    (float)giantChargeTimer, false);
+                if (giantOrbTexture >= 0) {
+                    const float size = (float)r * 2.0f;
+                    Novice::DrawSprite((int)(cx - r), (int)(cy - r), giantOrbTexture,
+                        size / 256.0f, size / 256.0f, 0.0f,
+                        WithAlpha(0x76DFFFFFu, 205));
+                }
+                else {
+                    Novice::DrawEllipse((int)cx, (int)cy, r, r, 0.0f,
+                        WithAlpha(0x76DFFFFFu, 185), kFillModeSolid);
+                }
+                Novice::SetBlendMode(kBlendModeNormal);
+                Novice::ScreenPrintf(850, 120, "GIANT MAGIC CHARGE!");
+            }
+            // ボスの弾（巨大魔力球は青い加算発光）
             for (int i = 0; i < kMaxBullets; ++i) {
-                if (bullets[i].active) {
+                if (bullets[i].active && bullets[i].giant) {
+                    const Bullet& b = bullets[i];
+                    int x = (int)b.x + shakeX, y = (int)b.y + shakeY;
+                    unsigned int outerColor = b.reflectLevel == 3 ? 0xB2F5FF00u : 0x247DFF00u;
+                    // 出現時は小さく、24Fで一回転しながら元のサイズまで大きくなる。
+                    // 位置・当たり判定・追尾速度は変更しない（見た目だけの演出）。
+                    float appearT = (float)b.appearanceTimer / (float)kGiantAppearFrames;
+                    if (appearT > 1.0f) appearT = 1.0f;
+                    const float easedT = appearT * appearT * (3.0f - 2.0f * appearT);
+                    const float appearScale = 0.15f + 0.85f * easedT;
+                    const float spinAngle = (1.0f - easedT) * -6.2831853f +
+                        (float)giantGlowFrame * 0.018f; // 登場後もゆっくり回転
+                    const float visibleRadius = kGiantRadius * appearScale;
+                    Novice::SetBlendMode(kBlendModeAdd);
+                    // ブレス用 maru.png の青白い発光も本体の拡大に合わせる。
+                    DrawGiantOrbGlow((float)x, (float)y, visibleRadius,
+                        maruTexture, (float)giantGlowFrame + (float)i * 3.0f,
+                        b.reflectLevel >= 2);
+                    Novice::DrawEllipse(x, y, (int)(90.0f * appearScale),
+                        (int)(90.0f * appearScale), 0.0f,
+                        WithAlpha(outerColor, 35), kFillModeSolid);
+                    // kougeki1.png を中心基準で回転・拡大描画する。
+                    if (giantOrbTexture >= 0) {
+                        const float drawSize = visibleRadius * 2.0f;
+                        const unsigned int orbColor = b.reflectLevel == 3 ? 0xE5FFFFFFu :
+                            (b.reflectLevel == 2 ? 0xB2F5FFFFu : 0x6FDFFFFFu);
+                        // DrawSpriteの回転基準による位置ずれを防ぐため、
+                        // 魔法陣の4頂点を弾の中心座標を基準に回転させて描画する。
+                        const float half = drawSize * 0.5f;
+                        const float cs = cosf(spinAngle);
+                        const float sn = sinf(spinAngle);
+                        const float centerX = b.x + (float)shakeX;
+                        const float centerY = b.y + (float)shakeY;
+                        const float localX[4] = { -half, half, -half, half };
+                        const float localY[4] = { -half, -half, half, half };
+                        int px[4], py[4];
+                        for (int v = 0; v < 4; ++v) {
+                            px[v] = (int)roundf(centerX + localX[v] * cs - localY[v] * sn);
+                            py[v] = (int)roundf(centerY + localX[v] * sn + localY[v] * cs);
+                        }
+                        Novice::DrawQuad(px[0], py[0], px[1], py[1],
+                            px[2], py[2], px[3], py[3],
+                            0, 0, 256, 256, giantOrbTexture, orbColor);
+                    }
+                    else {
+                        // 読み込みに失敗した場合も攻撃が見えるよう円で代替する。
+                        Novice::DrawEllipse(x, y, (int)(65.0f * appearScale),
+                            (int)(65.0f * appearScale), 0.0f,
+                            WithAlpha(0x2EAFFF00u, 125), kFillModeSolid);
+                        Novice::DrawEllipse(x, y, (int)(46.0f * appearScale),
+                            (int)(46.0f * appearScale), 0.0f,
+                            WithAlpha(0x87E5FF00u, 185), kFillModeSolid);
+                    }
+                    Novice::SetBlendMode(kBlendModeNormal);
+                }
+                else if (bullets[i].active) {
                     Novice::DrawEllipse((int)bullets[i].x + shakeX, (int)bullets[i].y + shakeY,
                         bullets[i].dashReflected ? 11 : 8, bullets[i].dashReflected ? 11 : 8, 0.0f,
                         bullets[i].dashReflected ? 0xE5FFFFFFu : (bullets[i].reflected ? 0x70DFFFFFu : 0xFFD16AFFu), kFillModeSolid);
@@ -1723,7 +2153,7 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                     WithAlpha(0xE8FFFFFFu, alpha), kFillModeSolid);
             }
             Novice::ScreenPrintf(30, 30, "A/D : MOVE  SPACE : JUMP  SHIFT : DASH  H : SWORD  J : COUNTER");
-            Novice::ScreenPrintf(30, 55, "J PRESS : 8F COUNTER WINDOW  |  ENTER : TEST CLEAR");
+            Novice::ScreenPrintf(30, 55, "J PRESS : 8F COUNTER WINDOW");
             if (justWindow) Novice::ScreenPrintf(30, 105, "JUST COUNTER WINDOW");
             Novice::ScreenPrintf(30, 155, "AIR DASH: HOLD W (UP) / S (DOWN) + SHIFT");
             Novice::ScreenPrintf(30, 180, "WIRE: PRESS J WHEN THE RING TURNS BLUE!");
@@ -1734,9 +2164,27 @@ int WINAPI WinMain(_In_ HINSTANCE, _In_opt_ HINSTANCE, _In_ LPSTR, _In_ int) {
                 Novice::ScreenPrintf(475, 100, "DASH JUST COUNTER!");
             // カウンター文字は画面演出・プレイヤーより前面に描画する。
             DrawCounterText(counterText, parryTexture, perfectTexture, breakTexture);
+            // ボスHPゲージ：画面上部に固定し、画面シェイクの影響を受けない。
+            const int hpBarX = 560;
+            const int hpBarY = 22;
+            const int hpBarWidth = 800;
+            const int hpBarHeight = 24;
+            const float hpRatio = (float)boss.hp / (float)kBossMaxHP;
+            Novice::DrawBox(hpBarX - 3, hpBarY - 3, hpBarWidth + 6,
+                hpBarHeight + 6, 0.0f, 0xB9D8E8FFu, kFillModeSolid);
+            Novice::DrawBox(hpBarX, hpBarY, hpBarWidth, hpBarHeight,
+                0.0f, 0x292331FFu, kFillModeSolid);
+            if (boss.hp > 0) {
+                Novice::DrawBox(hpBarX, hpBarY, (int)(hpBarWidth * hpRatio),
+                    hpBarHeight, 0.0f, 0xD83C52FFu, kFillModeSolid);
+            }
+            Novice::ScreenPrintf(hpBarX + 330, hpBarY + 4,
+                "HP %d / %d", boss.hp, kBossMaxHP);
+
             if (hitStopTimer > 0) Novice::ScreenPrintf(30, 80, "HIT STOP");
             else if (slowTimer > 0) Novice::ScreenPrintf(30, 80, "SLOW MOTION 25%%");
             break;
+        }
         case SCENE_GAMEOVER:
             Novice::ScreenPrintf(860, 510, "GAME OVER");
             break;
