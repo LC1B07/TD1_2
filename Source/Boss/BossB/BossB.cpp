@@ -1,4 +1,4 @@
-#include "BossB.h"
+#include "../BossB/BossB.h"
 #include <cmath>
 #include <cstring>
 
