@@ -8,7 +8,7 @@ namespace BossA {
 // 鬼ボス専用パラメータ（友達のチュートリアル設定は変更しない）
 constexpr float kOniWidth = 136.0f;
 constexpr float kOniHeight = 180.0f;
-constexpr int kOniMaxHp = 12;
+constexpr int kOniMaxHp = 200;
 constexpr int kPlayerMaxHp = 6;
 constexpr int kPlayerInvincibleFrames = 70;
 constexpr int kSmashWindup = 72;
@@ -182,7 +182,7 @@ void CounterOniAttack(GameState& state) {
 		return;
 
 	boss.hasHit = true;
-	boss.hp -= 2; // 右クリック成功は通常攻撃より強力
+	boss.hp -= 5; // 右クリック成功は通常攻撃より強力なダメージ
 	if (boss.hp < 0)
 		boss.hp = 0;
 	boss.state = boss.hp > 0 ? OniState::Recovery : OniState::Dead;
