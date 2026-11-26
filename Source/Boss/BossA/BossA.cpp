@@ -8,7 +8,8 @@ namespace BossA {
 // 鬼ボス専用パラメータ（友達のチュートリアル設定は変更しない）
 constexpr float kOniWidth = 136.0f;
 constexpr float kOniHeight = 180.0f;
-constexpr int kOniMaxHp = 300;
+constexpr float kClubLength = 150.0f; // 全状態で共通の金棒の長さ（中心線）
+constexpr int kOniMaxHp = 21000;
 constexpr int kPlayerMaxHp = 6;
 constexpr int kPlayerInvincibleFrames = 70;
 constexpr int kSmashWindup = 72;
@@ -22,13 +23,17 @@ constexpr int kChargeActive = 46;
 constexpr int kChargeRecovery = 90;
 constexpr float kOniWalkSpeed = 3.4f;
 constexpr float kOniChargeSpeed = 11.5f;
-constexpr int kOniCounterRetryCooldown = 32;
-constexpr int kOniJustCounterWindow = 12;
+constexpr int kClashFrames = 90;
+constexpr int kClashRequiredClicks = 8;
+constexpr float kClashFallSpeed = 22.0f; // 鍔迫り合い中の強制下降速度
 constexpr int kDownFrames = 150;
 constexpr int kRoarFrames = 150;
-constexpr int kBreakCount = 3;
-constexpr int kSwordDamage = 2;
-constexpr int kDownMultiplier = 3;
+
+constexpr int kSwordDamage = 140;
+constexpr int kDownDamage = 350;
+constexpr int kClashWinDamage = 5; // 従来の鍔迫り合い勝利ダメージ
+constexpr float kClashHandGap = 172.39448f;
+constexpr int kDamagePopupFrames = 60;
 constexpr int kChargeTurnFrames = 30;
 constexpr int kEnragedChargeActive = 60;
 constexpr float kEnragedChargeSpeed = 14.0f;
@@ -40,7 +45,12 @@ struct OniAttackBox {
 
 OniAttackBox GetOniAttackBox(const Boss& boss);
 OniAttackBox GetOniTelegraphBox(const Boss& boss);
-void CounterOniAttack(GameState& state);
+void StartClash(GameState& state);
+
+struct ClubPose {
+	float x, y, tipX, tipY;
+};
+ClubPose GetClubPose(const Boss& boss);
 
 namespace {
 
@@ -108,18 +118,124 @@ int GetRecovery(const Boss& boss) {
 }
 float GetChargeSpeed(const Boss& boss) { return boss.isEnraged ? kEnragedChargeSpeed : kOniChargeSpeed; }
 
+// 線分と矩形の最短距離を利用した金棒のカプセル判定。
+float PointBoxDistSq(float x, float y, const OniAttackBox& b) {
+	const float dx = x - Clamp(x, b.x, b.x + b.width);
+	const float dy = y - Clamp(y, b.y, b.y + b.height);
+	return dx * dx + dy * dy;
+}
+float PointSegmentDistSq(float x, float y, const ClubPose& c) {
+	const float dx = c.tipX - c.x, dy = c.tipY - c.y;
+	const float lenSq = dx * dx + dy * dy;
+	const float t = lenSq > 0.0f ? Clamp(((x - c.x) * dx + (y - c.y) * dy) / lenSq, 0.0f, 1.0f) : 0.0f;
+	const float ex = x - (c.x + dx * t), ey = y - (c.y + dy * t);
+	return ex * ex + ey * ey;
+}
+bool ClipAxis(float origin, float delta, float lo, float hi, float& enter, float& exit) {
+	if (fabsf(delta) < 0.0001f)
+		return origin >= lo && origin <= hi;
+	float a = (lo - origin) / delta, b = (hi - origin) / delta;
+	if (a > b) {
+		float tmp = a;
+		a = b;
+		b = tmp;
+	}
+	if (a > enter)
+		enter = a;
+	if (b < exit)
+		exit = b;
+	return enter <= exit;
+}
+bool ClubHitsBox(const ClubPose& c, const OniAttackBox& b, float radius) {
+	float enter = 0.0f, exit = 1.0f;
+	if (ClipAxis(c.x, c.tipX - c.x, b.x, b.x + b.width, enter, exit) && ClipAxis(c.y, c.tipY - c.y, b.y, b.y + b.height, enter, exit))
+		return true;
+	const float r2 = radius * radius;
+	if (PointBoxDistSq(c.x, c.y, b) <= r2 || PointBoxDistSq(c.tipX, c.tipY, b) <= r2)
+		return true;
+	for (int i = 0; i < 4; ++i) {
+		if (PointSegmentDistSq(b.x + ((i & 1) ? b.width : 0.0f), b.y + ((i & 2) ? b.height : 0.0f), c) <= r2)
+			return true;
+	}
+	return false;
+}
+
+constexpr float kClubRadius = 11.0f;
+constexpr float kClashBackReach = 38.0f;
+constexpr float kClashVerticalReach = 82.0f;
+
+bool CanClashWithClub(const GameState& state, const ClubPose& club) {
+	// 通常ダメージの命中済みフラグとは独立。密着時に先に本体を斬っても成立。
+	if (!state.normalSwordActive || state.swordSwingTimer <= 0)
+		return false;
+	const float cx = state.player.x + 18.0f, cy = state.player.y + 24.0f;
+	// 鬼の背後では成立させない。正面の密着時は補助判定を維持する。
+	const float bossCenter = state.boss.x + kOniWidth * 0.5f;
+	if ((cx - bossCenter) * state.boss.direction <= 0.0f)
+		return false;
+	// 双方が向き合っているときだけ成立。
+	if (state.player.direction != -state.boss.direction)
+		return false;
+	const float forward = kSwordHitWidth;
+	const float left = state.player.direction == 1 ? cx - kClashBackReach : cx - forward;
+	const OniAttackBox reach = {left, cy - kClashVerticalReach, forward + kClashBackReach, kClashVerticalReach * 2.0f};
+	return ClubHitsBox(club, reach, kClubRadius);
+}
+
+// 鍔迫り合い時の左右対称の固定配置。画面端では鬼も必要分だけ移動。
+void AlignClash(GameState& state) {
+	Boss& boss = state.boss;
+	const int d = boss.direction;
+	const float offset = 36.0f + kClashHandGap + 12.0f;
+	const float minCenter = d == 1 ? 68.0f : offset + 18.0f;
+	const float maxCenter = d == 1 ? kWidth - offset - 18.0f : kWidth - 68.0f;
+	const float center = Clamp(boss.x + 68.0f, minCenter, maxCenter);
+	boss.x = center - 68.0f;
+	state.player.direction = -d;
+	state.player.x = center + d * offset - 18.0f;
+
+	// 金棒の手元から120px、剣の手元から60pxの交点を求める。
+	// 両武器の長さは維持し、空中から着地する間も接触点を追従。
+	const float dy = state.player.y + 24.0f - (boss.y + 105.0f);
+	const float dx = kClashHandGap;
+	const float distance = sqrtf(dx * dx + dy * dy);
+	const float a = (120.0f * 120.0f - 60.0f * 60.0f + distance * distance) / (2.0f * distance);
+	const float h = sqrtf(Clamp(120.0f * 120.0f - a * a, 0.0f, 14400.0f));
+	const float contactX = (a * dx + h * dy) / distance;
+	const float contactY = (a * dy - h * dx) / distance;
+	boss.clashClubAngle = atan2f(contactY, contactX);
+}
+
+void AddDamagePopup(Boss& boss, int damage, float x, float y) {
+	if (damage <= 0)
+		return;
+	OniDamagePopup& popup = boss.damagePopups[boss.damagePopupIndex];
+	popup = {x, y - 24.0f, damage, kDamagePopupFrames};
+	boss.damagePopupIndex = (boss.damagePopupIndex + 1) % 32;
+}
+
+void UpdateDamagePopups(Boss& boss) {
+	for (auto& popup : boss.damagePopups) {
+		if (popup.timer > 0) {
+			--popup.timer;
+			popup.y -= 0.8f;
+		}
+	}
+}
+
 // 形態移行を最優先。HP半分で止め、演出中の操作・攻撃を無効化。
-void ApplyOniDamage(GameState& state, int damage) {
+void ApplyOniDamage(GameState& state, int damage, float hitX, float hitY) {
 	Boss& boss = state.boss;
 	if (boss.state == OniState::Roar || boss.state == OniState::Dead)
 		return;
+	const int oldHp = boss.hp;
 	boss.hp -= damage;
 	if (!boss.isEnraged && boss.hp <= kOniMaxHp / 2) {
 		boss.hp = kOniMaxHp / 2;
 		boss.isEnraged = true;
 		boss.state = OniState::Roar;
 		boss.stateTimer = kRoarFrames;
-		boss.justGuardCount = 0;
+		boss.clashClicks = 0;
 		boss.chargeCount = 0;
 		boss.hasHit = true;
 		boss.roarStartX = state.player.x;
@@ -141,6 +257,7 @@ void ApplyOniDamage(GameState& state, int damage) {
 		boss.hp = 0;
 		boss.state = OniState::Dead;
 	}
+	AddDamagePopup(boss, oldHp - boss.hp, hitX, hitY);
 }
 
 void UpdateRoar(GameState& state) {
@@ -209,15 +326,21 @@ void TryOniAttackHit(GameState& state) {
 	if (boss.hasHit || boss.state != OniState::Attack) {
 		return;
 	}
-	const OniAttackBox area = GetOniAttackBox(boss);
-	if (!IsHit(area.x, area.y, area.width, area.height, state.player.x, state.player.y, 36.0f, 48.0f)) {
-		return;
-	}
-
-	// 当たり判定中に右クリックのカウンター受付が重なれば成功。
-	if (state.justWindow) {
-		CounterOniAttack(state);
-		return;
+	const OniAttackBox playerBox = {state.player.x, state.player.y, 36.0f, 48.0f};
+	if (boss.attack == OniAttack::Charge) {
+		// 突進は鍔迫り合い不可。剣を振っても止められない。
+		const OniAttackBox area = GetOniAttackBox(boss);
+		if (!IsHit(area.x, area.y, area.width, area.height, playerBox.x, playerBox.y, playerBox.width, playerBox.height))
+			return;
+	} else {
+		const ClubPose club = GetClubPose(boss);
+		// 金棒との鍔迫り合いを、プレイヤーの被弾より先に判定。
+		if (CanClashWithClub(state, club)) {
+			StartClash(state);
+			return;
+		}
+		if (!ClubHitsBox(club, playerBox, kClubRadius))
+			return;
 	}
 
 	// ダッシュ中は回避成功。判定は1回だけにする。
@@ -243,6 +366,47 @@ void ResetOniBattle(Player& player, Boss& boss, Bullet bullets[]) {
 	}
 }
 
+// 描画と攻撃判定で共有する金棒の始点・終点（ワールド座標）。
+ClubPose GetClubPose(const Boss& boss) {
+	const int d = boss.direction;
+	float y = boss.y;
+	if (boss.attack == OniAttack::Charge && (boss.state == OniState::Telegraph || boss.state == OniState::Attack))
+		y += 12.0f;
+	if (boss.state == OniState::Down)
+		y += 38.0f;
+	const float x = boss.x + 68.0f + d * 36.0f;
+	const float handY = y + (boss.attack == OniAttack::Sweep && boss.state != OniState::Clash ? 125.0f : 105.0f);
+	const bool active = boss.state == OniState::Attack || boss.state == OniState::Clash;
+	// 先端の半径も考慮し、長さを変えず角度だけで地面に接触させる。
+	const float groundAngle = asinf(Clamp((kGroundY - kClubRadius - handY) / kClubLength, -1.0f, 1.0f));
+	const float idleAngle = Clamp(0.25f, -1.57f, groundAngle);
+	float angle = idleAngle;
+	if (boss.attack != OniAttack::Charge) {
+		const float startAngle = boss.attack == OniAttack::Smash ? -1.45f : -0.65f;
+		const float endAngle = boss.attack == OniAttack::Smash ? groundAngle : Clamp(0.30f, -1.57f, groundAngle);
+		if (active || boss.state == OniState::Telegraph) {
+			const int timer = boss.state == OniState::Clash ? boss.clashClubTimer : boss.stateTimer;
+			const float progress = active ? Clamp((GetActive(boss) - timer) / (float)(GetActive(boss) - 1), 0.0f, 1.0f) : 0.0f;
+			// 振り下ろしは加速しながら地面へ、最後の数フレームは接地。
+			const float t = boss.attack == OniAttack::Smash ? Clamp(progress / 0.82f, 0.0f, 1.0f) : progress;
+			angle = startAngle + (endAngle - startAngle) * (boss.attack == OniAttack::Smash ? t * t : t);
+		} else if (boss.state == OniState::Recovery) {
+			const float elapsed = (float)(GetRecovery(boss) - boss.stateTimer);
+			const float t = Clamp((elapsed - 10.0f) / 18.0f, 0.0f, 1.0f);
+			angle = endAngle + (idleAngle - endAngle) * t;
+		}
+	} else if (active || boss.state == OniState::Telegraph) {
+		angle = 2.8883f;
+	}
+	if (boss.state == OniState::Clash)
+		angle = boss.clashClubAngle;
+	// 待機・ダウン・突進も含め、金棒の外周を地面より上に保つ。
+	if (sinf(angle) > sinf(groundAngle)) {
+		angle = cosf(angle) >= 0.0f ? groundAngle : 3.14159265f - groundAngle;
+	}
+	return {x, handY, x + d * cosf(angle) * kClubLength, handY + sinf(angle) * kClubLength};
+}
+
 OniAttackBox GetOniAttackBox(const Boss& boss) {
 	const float front = boss.direction == 1 ? boss.x + kOniWidth - 25.0f : boss.x + 25.0f;
 	if (boss.attack == OniAttack::Smash) {
@@ -257,49 +421,68 @@ OniAttackBox GetOniAttackBox(const Boss& boss) {
 
 OniAttackBox GetOniTelegraphBox(const Boss& boss) {
 	if (boss.attack != OniAttack::Charge) {
-		return GetOniAttackBox(boss);
+		// 金棒が通る範囲の概略。実際の判定は金棒だけ。
+		const float x = boss.x + 68.0f + boss.direction * 36.0f;
+		const float handY = boss.y + (boss.attack == OniAttack::Sweep ? 125.0f : 105.0f);
+		const float reach = kClubLength;
+		const float top = handY - (boss.attack == OniAttack::Sweep ? 125.0f : 160.0f);
+		return {boss.direction == 1 ? x - 11.0f : x - reach - 11.0f, top, reach + 22.0f, kGroundY - top};
 	}
 	// 突進だけは実際の移動経路を予告する。
 	const float endX = Clamp(boss.x + boss.direction * GetChargeSpeed(boss) * GetActive(boss), 0.0f, kWidth - kOniWidth);
 	return {boss.direction == 1 ? boss.x : endX, boss.y + 24.0f, fabsf(endX - boss.x) + kOniWidth, kOniHeight - 24.0f};
 }
 
-void CounterOniAttack(GameState& state) {
+// 攻撃がぶつかったら、攻撃と移動を止めて連打フェーズへ。
+void StartClash(GameState& state) {
 	Boss& boss = state.boss;
-	if (boss.state != OniState::Attack)
-		return;
-
+	boss.clashClubTimer = boss.stateTimer;
+	boss.state = OniState::Clash;
+	boss.stateTimer = kClashFrames;
+	boss.clashClicks = 0;
 	boss.hasHit = true;
-	++boss.justGuardCount;
-	ApplyOniDamage(state, 5);
-	if (boss.state == OniState::Roar || boss.state == OniState::Dead)
-		return;
-	const bool broken = boss.justGuardCount >= kBreakCount;
-	if (broken) {
+	// 武器が届く高さに収め、残りは従来通り地面へ押し下げる。
+	state.player.y = Clamp(state.player.y, kGroundY - 145.0f, kGroundY - 48.0f);
+	AlignClash(state);
+	state.swordHitBoss = true;
+	state.normalSwordActive = false;
+	state.swordSwingTimer = 0;
+	state.dashTimer = 0;
+	state.player.velocityY = 0.0f;
+	state.swordRequest = state.normalSwordRequest = state.dashRequest = state.jumpRequest = false;
+	state.shakeTimer = state.shakeTotalFrames = 12;
+	state.shakeMaxPower = 10.0f;
+}
+
+void UpdateClash(GameState& state, bool pressed) {
+	Boss& boss = state.boss;
+	// 空中で成立した場合も停止させず、地面まで押し下げる。
+	const float floorY = kGroundY - 48.0f;
+	state.player.y = Clamp(state.player.y + kClashFallSpeed, 0.0f, floorY);
+	state.player.onGround = state.player.y >= floorY;
+	state.player.velocityY = state.player.onGround ? 0.0f : kClashFallSpeed;
+	AlignClash(state);
+	if (pressed && boss.clashClicks < kClashRequiredClicks) {
+		++boss.clashClicks;
+		state.shakeTimer = state.shakeTotalFrames = 4;
+		state.shakeMaxPower = 5.0f;
+	}
+	if (boss.clashClicks >= kClashRequiredClicks && state.player.onGround) {
 		boss.state = OniState::Down;
 		boss.stateTimer = kDownFrames;
 		boss.chargeCount = 0;
-	} else if (!(boss.isEnraged && boss.attack == OniAttack::Charge)) {
+		boss.clashClicks = 0;
+		state.bossFlash = 18;
+		state.shakeTimer = state.shakeTotalFrames = 16;
+		state.shakeMaxPower = 18.0f;
+		ApplyOniDamage(state, kClashWinDamage, boss.x + 68.0f, boss.y + 100.0f);
+	} else if (boss.clashClicks < kClashRequiredClicks && --boss.stateTimer <= 0) {
+		boss.clashClicks = 0;
+		boss.chargeCount = 0;
 		boss.state = OniState::Recovery;
-		boss.stateTimer = 90;
+		boss.stateTimer = GetRecovery(boss);
+		HitPlayer(state);
 	}
-	// 怒り突進は1・2回目のJGで止めない。hasHitで同一突進の多重判定を防ぐ。
-	state.bossFlash = 18;
-	state.counterWindowTimer = 0;
-	state.counterArmed = false;
-	state.justWindow = false;
-	state.counterCooldown = kOniCounterRetryCooldown;
-
-	const bool enhanced = state.dashTimer > 0;
-	state.counterEffect = {state.player.x + 18.0f, state.player.y + 24.0f, 30, enhanced};
-	state.shakeTimer = enhanced ? kDashCounterShakeFrames : kCounterShakeFrames;
-	state.shakeTotalFrames = state.shakeTimer;
-	state.shakeMaxPower = enhanced ? kDashCounterShakePower : kCounterShakePower;
-	state.hitStopTimer = enhanced ? kDashCounterHitStopFrames : kCounterHitStopFrames;
-	state.slowTimer = enhanced ? kDashCounterSlowFrames : kCounterSlowFrames;
-	state.gameFrameAccumulator = 0.0f;
-	if (enhanced)
-		state.specialFlashTimer = kDashCounterFlashFrames;
 }
 
 void UpdateBoss(GameState& state) {
@@ -340,10 +523,12 @@ void UpdateBoss(GameState& state) {
 		if (boss.stateTimer <= 0) {
 			boss.state = OniState::Attack;
 			boss.stateTimer = GetActive(boss);
+			TryOniAttackHit(state);
 		}
 		break;
 
 	case OniState::Attack:
+		--boss.stateTimer;
 		if (boss.attack == OniAttack::Charge) {
 			boss.x += boss.direction * GetChargeSpeed(boss);
 			boss.x = Clamp(boss.x, 0.0f, kWidth - kOniWidth);
@@ -351,7 +536,6 @@ void UpdateBoss(GameState& state) {
 		TryOniAttackHit(state);
 		if (boss.state != OniState::Attack)
 			break; // カウンターで中断
-		--boss.stateTimer;
 		if (boss.stateTimer <= 0 || (boss.attack == OniAttack::Charge && boss.isEnraged && (boss.x <= 0.0f || boss.x >= kWidth - kOniWidth))) {
 			if (boss.isEnraged && boss.attack == OniAttack::Charge && boss.chargeCount < 3) {
 				++boss.chargeCount;
@@ -376,11 +560,12 @@ void UpdateBoss(GameState& state) {
 
 	case OniState::Down:
 		if (--boss.stateTimer <= 0) {
-			boss.justGuardCount = 0;
+			boss.clashClicks = 0;
 			boss.state = OniState::Idle;
 			boss.stateTimer = 16;
 		}
 		break;
+	case OniState::Clash:
 	case OniState::Roar:
 		break;
 	case OniState::Dead:
@@ -399,13 +584,22 @@ void Reset(GameState& state) {
 
 // 鬼への命中後の処理。剣の攻撃範囲と有効時間はplayer.cppで共通管理。
 void CheckSwordHitBoss(GameState& state) {
+	if (state.boss.state == OniState::Clash)
+		return;
 	if (!IsSwordHitTarget(state, state.boss.x, state.boss.y, kOniWidth, kOniHeight)) {
 		return;
 	}
 	state.swordHitBoss = true;
 	if (state.boss.state == OniState::Roar || state.boss.state == OniState::Dead)
 		return;
-	ApplyOniDamage(state, kSwordDamage * (state.boss.state == OniState::Down ? kDownMultiplier : 1));
+	// 剣の攻撃矩形と鬼の矩形の重なりの中心を命中位置にする。
+	const float left = state.player.x + 18.0f - (state.player.direction == -1 ? kSwordHitWidth : 0.0f);
+	const float top = state.player.y + 24.0f - kSwordHitHeight * 0.5f;
+	const float x1 = fmaxf(left, state.boss.x);
+	const float x2 = fminf(left + kSwordHitWidth, state.boss.x + kOniWidth);
+	const float y1 = fmaxf(top, state.boss.y);
+	const float y2 = fminf(top + kSwordHitHeight, state.boss.y + kOniHeight);
+	ApplyOniDamage(state, state.boss.state == OniState::Down ? kDownDamage : kSwordDamage, (x1 + x2) * 0.5f, (y1 + y2) * 0.5f);
 	state.swordHitFlashTimer = 12;
 	state.bossFlash = 12;
 }
@@ -413,19 +607,21 @@ void CheckSwordHitBoss(GameState& state) {
 // BossA更新：攻撃入力／カウンター／AI／勝敗判定。
 void Update(GameState& state, Scene& currentScene, const char keys[], const char preKeys[], bool leftMousePressed, bool rightMousePressed) {
 	UpdateEffectTimers(state);
+	UpdateDamagePopups(state.boss);
 	if (state.boss.state == OniState::Roar) {
 		UpdateRoar(state);
 		return;
 	}
 
-	// 右クリックを押した瞬間にカウンターの受付を開始。
-	// 弾の反射ではなく、鬼の攻撃が当たる瞬間を受け止める。
-	if (rightMousePressed && state.counterCooldown == 0) {
-		state.counterArmed = true;
-		state.counterWindowTimer = kOniJustCounterWindow;
-		state.counterCooldown = kOniCounterRetryCooldown;
+	(void)rightMousePressed; // 鬼戦ではガード廃止
+	if (state.boss.state == OniState::Clash) {
+		UpdateClash(state, leftMousePressed);
+		if (state.boss.hp <= 0)
+			currentScene = SCENE_CLEAR;
+		else if (state.playerHp <= 0)
+			currentScene = SCENE_GAMEOVER;
+		return;
 	}
-	state.justWindow = state.counterArmed && state.counterWindowTimer > 0;
 
 	// 左クリックで通常攻撃（1回のクリックで1回斬る）
 	if (leftMousePressed && state.swordSwingTimer == 0) {
@@ -461,18 +657,10 @@ void Update(GameState& state, Scene& currentScene, const char keys[], const char
 			--state.playerInvincibleTimer;
 		}
 
-		BossA::CheckSwordHitBoss(state);
-		if (state.boss.state != OniState::Roar)
-			UpdateBoss(state);
-	}
-
-	// 成功判定に使った「現在フレーム」を含めて12F受付。
-	if (state.counterWindowTimer > 0) {
-		--state.counterWindowTimer;
-		if (state.counterWindowTimer <= 0) {
-			state.counterArmed = false;
-			state.justWindow = false;
-		}
+		// 鍔迫り合いを通常の命中より優先する。
+		UpdateBoss(state);
+		if (state.boss.state != OniState::Roar && state.boss.state != OniState::Clash)
+			BossA::CheckSwordHitBoss(state);
 	}
 
 	if (state.boss.hp <= 0) {
@@ -489,6 +677,8 @@ static void DrawOniWarning(const Boss& boss, int sx, int sy) {
 	}
 
 	const bool preparing = boss.state == OniState::Telegraph;
+	if (!preparing && boss.attack != OniAttack::Charge)
+		return;
 	const OniAttackBox area = preparing ? GetOniTelegraphBox(boss) : GetOniAttackBox(boss);
 
 	unsigned int color = 0xFF8A48FFu; // 振り下ろし：橙
@@ -498,7 +688,7 @@ static void DrawOniWarning(const Boss& boss, int sx, int sy) {
 		label = "SWEEP!";
 	} else if (boss.attack == OniAttack::Charge) {
 		color = 0xFF4B4BFFu; // 突進：赤
-		label = "CHARGE!";
+		label = "CHARGE! DODGE!";
 	}
 
 	const unsigned int alpha = preparing ? 48 : 105;
@@ -546,46 +736,17 @@ static void DrawOni(const Boss& boss, int sx, int sy, bool flashing) {
 	Novice::DrawEllipse(x + 55, y + 39, 6, 5, 0.0f, 0xFFECB0FFu, kFillModeSolid);
 	Novice::DrawEllipse(x + 81, y + 39, 6, 5, 0.0f, 0xFFECB0FFu, kFillModeSolid);
 
-	// 金棒を攻撃ごとに違う構えで描画。
-	const int d = boss.direction;
-	int baseX = x + 68 + d * 36;
-	int baseY = y + 90;
-	int tipX = baseX + d * 56;
-	int tipY = baseY + 72;
-
-	if (boss.state == OniState::Telegraph) {
-		if (boss.attack == OniAttack::Smash) {
-			// 頭上に高く振り上げる
-			baseY = y + 34;
-			tipX = baseX + d * 15;
-			tipY = y - 92;
-		} else if (boss.attack == OniAttack::Sweep) {
-			// 身体の横で水平に構える
-			tipX = baseX - d * 114;
-			tipY = baseY - 17;
-		} else {
-			// 突進準備：低く腰を落として金棒を引く
-			tipX = baseX - d * 85;
-			tipY = baseY + 22;
-		}
-	} else if (boss.state == OniState::Attack) {
-		if (boss.attack == OniAttack::Smash) {
-			tipX = baseX + d * 145;
-			tipY = (int)kGroundY - 8 + sy;
-		} else if (boss.attack == OniAttack::Sweep) {
-			tipX = baseX + d * 188;
-			tipY = baseY + 3;
-		} else {
-			tipX = baseX - d * 60;
-			tipY = baseY + 24;
-		}
+	// 当たり判定と同じ座標から金棒を描画する。
+	const ClubPose club = GetClubPose(boss);
+	const float dx = club.tipX - club.x, dy = club.tipY - club.y;
+	const float length = sqrtf(dx * dx + dy * dy);
+	const float nx = length > 0.0f ? -dy / length : 0.0f;
+	const float ny = length > 0.0f ? dx / length : 0.0f;
+	for (int offset = -10; offset <= 10; ++offset) {
+		Novice::DrawLine((int)(club.x + nx * offset) + sx, (int)(club.y + ny * offset) + sy, (int)(club.tipX + nx * offset) + sx, (int)(club.tipY + ny * offset) + sy, 0x4E515BFFu);
 	}
-
-	// 太さのある金棒（線の多重描画）
-	for (int offset = -4; offset <= 4; offset += 2) {
-		Novice::DrawLine(baseX + offset, baseY, tipX + offset, tipY, 0x4E515BFFu);
-	}
-	Novice::DrawEllipse(tipX, tipY, 11, 11, 0.0f, 0x727985FFu, kFillModeSolid);
+	Novice::DrawEllipse((int)club.x + sx, (int)club.y + sy, 11, 11, 0.0f, 0x4E515BFFu, kFillModeSolid);
+	Novice::DrawEllipse((int)club.tipX + sx, (int)club.tipY + sy, 11, 11, 0.0f, 0x727985FFu, kFillModeSolid);
 
 	if (boss.state == OniState::Down) {
 		Novice::ScreenPrintf(x + 38, y - 65, "DOWN!");
@@ -605,13 +766,11 @@ void Draw(const GameState& state) {
 
 	Novice::DrawBox(30, 100, 400, 14, 0.0f, 0x333333FFu, kFillModeSolid);
 	Novice::DrawBox(30, 100, 400 * state.boss.hp / kOniMaxHp, 14, 0.0f, 0xC94444FFu, kFillModeSolid);
-	for (int i = 0; i < kBreakCount; ++i) {
-		Novice::DrawBox(30 + i * 42, 122, 36, 12, 0.0f, i < state.boss.justGuardCount ? 0xFFD060FFu : 0x555555FFu, kFillModeSolid);
-	}
+
 	if (state.boss.isEnraged)
 		Novice::ScreenPrintf(460, 76, "ENRAGED");
 	if (state.boss.state == OniState::Down)
-		Novice::ScreenPrintf(170, 120, "DOWN: %.1fs / DAMAGE x3", state.boss.stateTimer / 60.0f);
+		Novice::ScreenPrintf(170, 120, "DOWN: %.1fs / DAMAGE 350", state.boss.stateTimer / 60.0f);
 	if (state.boss.isEnraged && state.boss.attack == OniAttack::Charge && (state.boss.state == OniState::Telegraph || state.boss.state == OniState::Attack))
 		Novice::ScreenPrintf(460, 100, "CHARGE %d / 3", state.boss.chargeCount);
 
@@ -661,14 +820,31 @@ void Draw(const GameState& state) {
 	if (state.playerInvincibleTimer == 0 || (state.playerInvincibleTimer / 5) % 2 == 0) {
 		Novice::DrawBox((int)state.player.x + sx, (int)state.player.y + sy, 36, 48, 0.0f, 0x66BFFFFFu, kFillModeSolid);
 	}
-	DrawSword(state.player, state.swordSwingTimer, sx, sy);
+	if (state.boss.state != OniState::Clash)
+		DrawSword(state.player, state.swordSwingTimer, sx, sy);
 
-	// 右クリックのカウンター受付を青い円で表示。
-	if (state.justWindow) {
-		Novice::DrawEllipse((int)state.player.x + 18 + sx, (int)state.player.y + 24 + sy, 54, 54, 0.0f, 0x88EEFFFFu, kFillModeWireFrame);
-		Novice::ScreenPrintf(30, 150, "COUNTER ACTIVE");
+	if (state.boss.state == OniState::Clash) {
+		// 金棒の途中と剣の途中が交差する専用姿勢。
+		const ClubPose club = GetClubPose(state.boss);
+		const float contactX = club.x + (club.tipX - club.x) * 0.8f;
+		const float contactY = club.y + (club.tipY - club.y) * 0.8f;
+		const float handX = state.player.x + 18.0f + state.player.direction * 12.0f;
+		const float handY = state.player.y + 24.0f;
+		const float dx = contactX - handX, dy = contactY - handY;
+		const float length = sqrtf(dx * dx + dy * dy);
+		const float ux = dx / length, uy = dy / length;
+		const float tipX = handX + ux * kSwordLength, tipY = handY + uy * kSwordLength;
+		Novice::DrawLine((int)handX + sx, (int)handY + sy, (int)tipX + sx, (int)tipY + sy, 0x52BFFFFFu);
+		Novice::DrawLine((int)(handX - uy * 2) + sx, (int)(handY + ux * 2) + sy, (int)(tipX - uy * 2) + sx, (int)(tipY + ux * 2) + sy, 0xE5F9FFFFu);
+		Novice::DrawLine((int)(handX - ux * 12) + sx, (int)(handY - uy * 12) + sy, (int)handX + sx, (int)handY + sy, 0x326E9BFFu);
+		Novice::DrawLine((int)(handX - uy * 7) + sx, (int)(handY + ux * 7) + sy, (int)(handX + uy * 7) + sx, (int)(handY - ux * 7) + sy, 0xFFFFFFFFu);
+		Novice::DrawEllipse((int)contactX + sx, (int)contactY + sy, 12, 12, 0.0f, 0xFFDC55FFu, kFillModeWireFrame);
+		Novice::ScreenPrintf(kWidth / 2 - 100, 220, "CLASH! CLICK RAPIDLY!");
+		Novice::DrawBox(kWidth / 2 - 150, 250, 300, 20, 0.0f, 0x333333FFu, kFillModeSolid);
+		Novice::DrawBox(kWidth / 2 - 150, 250, 300 * state.boss.clashClicks / kClashRequiredClicks, 20, 0.0f, 0xFFD060FFu, kFillModeSolid);
+		Novice::DrawBox(kWidth / 2 - 150, 280, 300 * state.boss.stateTimer / kClashFrames, 8, 0.0f, 0x77CFFFFFu, kFillModeSolid);
+		Novice::ScreenPrintf(kWidth / 2 - 50, 300, "%d / %d", state.boss.clashClicks, kClashRequiredClicks);
 	}
-	DrawCounterEffect(state.counterEffect, sx, sy);
 
 	if (state.swordHitFlashTimer > 0) {
 		Novice::ScreenPrintf(30, 177, "ATTACK HIT!");
@@ -677,16 +853,21 @@ void Draw(const GameState& state) {
 		Novice::ScreenPrintf(30, 205, "COUNTER SUCCESS!");
 	}
 
+	// 命中位置に固定された数値を上へ浮かせる。複数ヒットも個別表示。
+	for (const auto& popup : state.boss.damagePopups) {
+		if (popup.timer <= 0)
+			continue;
+		int digits = 1;
+		for (int value = popup.damage; value >= 10; value /= 10)
+			++digits;
+		Novice::ScreenPrintf((int)Clamp(popup.x + sx - digits * 4.0f, 0.0f, kWidth - digits * 8.0f), (int)Clamp(popup.y + sy, 0.0f, kHeight - 16.0f), "%d", popup.damage);
+	}
+
 	// 操作案内（地面より下に置く）
 	Novice::ScreenPrintf(30, 674, "A/D: MOVE   SPACE: JUMP   SHIFT: DASH");
-	Novice::ScreenPrintf(30, 704, "LEFT CLICK: ATTACK   RIGHT CLICK: COUNTER");
+	Novice::ScreenPrintf(30, 704, "LEFT CLICK: ATTACK / CLASH");
 	Novice::ScreenPrintf(30, 734, "ORANGE: OVERHEAD  PURPLE: SWEEP  RED: CHARGE");
-	Novice::ScreenPrintf(30, 764, "Watch the windup. Dodge or counter, then punish the recovery!");
-	if (state.counterCooldown > 0) {
-		Novice::ScreenPrintf(30, 798, "COUNTER COOLDOWN: %d", state.counterCooldown);
-	} else {
-		Novice::ScreenPrintf(30, 798, "COUNTER READY");
-	}
+	Novice::ScreenPrintf(30, 764, "Clash with the club! Dodge red charges with movement / dash.");
 
 	if (state.specialFlashTimer > 0) {
 		Novice::DrawBox(0, 0, kWidth, kHeight, 0.0f, WithAlpha(0xD8FAFF00u, 150 * state.specialFlashTimer / kDashCounterFlashFrames), kFillModeSolid);

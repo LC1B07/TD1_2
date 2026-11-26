@@ -37,9 +37,9 @@ const int kDashAfterimageCount = 8;
 
 // 剣
 const int kSwordSwingFrames = 16;
-const float kSwordLength = 58.0f;
-const float kSwordHitWidth = 100.0f;
-const float kSwordHitHeight = 100.0f;
+const float kSwordLength = 72.0f;
+const float kSwordHitWidth = 112.0f;
+const float kSwordHitHeight = 120.0f;
 
 const int kSwordHitStart = 14;
 const int kSwordHitEnd = 3;
@@ -89,9 +89,16 @@ struct DashWave {
 };
 
 // 鬼ボスの状態（チュートリアルの射撃ボスとは独立して使用）
-enum class OniState { Idle, Move, Telegraph, Attack, Recovery, Dead, Down, Roar };
+enum class OniState { Idle, Move, Telegraph, Attack, Recovery, Dead, Down, Roar, Clash };
 
 enum class OniAttack { Smash, Sweep, Charge };
+
+// 鬼専用のダメージ表示
+struct OniDamagePopup {
+	float x, y;
+	int damage;
+	int timer;
+};
 
 // ボス
 struct Boss {
@@ -107,7 +114,11 @@ struct Boss {
 	int stateTimer = 0;
 	int attackCount = 0;
 	bool hasHit = false;
-	int justGuardCount = 0;
+	int clashClicks = 0;
+	int clashClubTimer = 0; // 旧姿勢保持用
+	float clashClubAngle = 0.0f;
+	OniDamagePopup damagePopups[32] = {};
+	int damagePopupIndex = 0;
 	bool isEnraged = false;
 	int chargeCount = 0;
 	float roarStartX = 0.0f, roarStartY = 0.0f, roarTargetX = 0.0f;
